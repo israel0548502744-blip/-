@@ -5,3 +5,6 @@ einops==0.7.0
 huggingface-hub<0.26
 onnx>=1.16
 onnxruntime>=1.19
+pillow
+trimesh
+numpy<2
