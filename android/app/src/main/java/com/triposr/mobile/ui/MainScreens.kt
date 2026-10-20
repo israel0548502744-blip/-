@@ -427,7 +427,7 @@ fun ModelCard(status: ModelStore.Status, compact: Boolean = true) {
             else Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.CheckCircle, null, tint = C.Green, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("המודל מותקן (${ModelStore.sizeOnDisk(ctx) shr 20} MB)", color = C.Green)
+                Text("המודל מותקן · ${ModelStore.sizeOnDisk(ctx) shr 20} MB", color = C.Green)
             }
         ModelStore.Status.Missing -> Section {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -655,7 +655,7 @@ fun BackendPicker(choice: Backend?, onChoice: (Backend?) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
         for (b in Backend.entries) {
             val r = results[b] ?: continue
-            Chip("${b.short}: ${r.support.label}", when (r.support) {
+            Chip("${b.short} · ${r.support.label}", when (r.support) {
                 Support.OK -> C.Green
                 Support.UNKNOWN -> C.Sub
                 else -> C.Amber
@@ -676,7 +676,7 @@ fun NpuPackCard(status: ModelStore.Status, alwaysShow: Boolean = false) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     if (com.triposr.mobile.NpuPack.chip() == null) {
-        if (alwaysShow) Text("אין חבילת NPU לשבב הזה (${android.os.Build.SOC_MODEL}). GPU/CPU עובדים כרגיל.", color = C.Sub, fontSize = 13.sp)
+        if (alwaysShow) Text("אין חבילת NPU לשבב הזה · ${android.os.Build.SOC_MODEL}. GPU ו-CPU עובדים כרגיל.", color = C.Sub, fontSize = 13.sp)
         return
     }
     var size by remember { mutableStateOf<Long?>(null) }
@@ -690,7 +690,7 @@ fun NpuPackCard(status: ModelStore.Status, alwaysShow: Boolean = false) {
         ModelStore.Status.Ready -> if (alwaysShow) Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.CheckCircle, null, tint = C.Green, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("חבילת NPU מותקנת (${ModelStore.sizeOnDisk(ctx, ModelStore.NPU) shr 20} MB)", color = C.Green)
+            Text("חבילת NPU מותקנת · ${ModelStore.sizeOnDisk(ctx, ModelStore.NPU) shr 20} MB", color = C.Green)
         }
         is ModelStore.Status.Downloading -> Section {
             val pct = status.done.toFloat() / status.total

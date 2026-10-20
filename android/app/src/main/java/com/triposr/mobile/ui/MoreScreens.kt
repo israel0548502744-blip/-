@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -86,6 +87,7 @@ import com.triposr.mobile.Updater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun ResultScreen() {
@@ -161,8 +163,8 @@ fun ResultScreen() {
             }
 
             Section(title = "עריכה") {
-                Text("החלקה: ${smoothIt.toInt()}", color = C.Sub, fontSize = 13.sp)
-                Slider(smoothIt, { smoothIt = it }, valueRange = 0f..10f, steps = 9, colors = sliderColors())
+                Text("החלקה: ${smoothIt.roundToInt()}", color = C.Sub, fontSize = 13.sp)
+                Slider(smoothIt, { smoothIt = it }, valueRange = 0f..10f, colors = sliderColors())
                 Text("פישוט (פחות פוליגונים): ${(reduce * 100).toInt()}%", color = C.Sub, fontSize = 13.sp)
                 Slider(reduce, { reduce = it }, valueRange = 0f..0.9f, colors = sliderColors())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -170,7 +172,7 @@ fun ResultScreen() {
                         busy = true
                         scope.launch {
                             val base = AppState.originalMesh ?: mesh
-                            val m = withContext(Dispatchers.Default) { MeshTools.smooth(MeshTools.simplify(base, reduce), smoothIt.toInt()) }
+                            val m = withContext(Dispatchers.Default) { MeshTools.smooth(MeshTools.simplify(base, reduce), smoothIt.roundToInt()) }
                             AppState.mesh = m; edited = true; busy = false
                         }
                     }
@@ -286,8 +288,10 @@ fun ProjectsScreen() {
                 items(list, key = { it.id }) { p ->
                     Box {
                         ProjectThumb(p, Modifier.fillMaxWidth())
-                        Box(Modifier.align(Alignment.TopEnd).padding(14.dp)) {
-                            CircleIcon(Icons.Rounded.Delete, "מחק", size = 34.dp) { toDelete = p }
+                        Box(Modifier.align(Alignment.TopEnd).padding(16.dp).size(34.dp).clip(CircleShape)
+                            .background(Color(0xAA120B2A)).border(1.dp, Color(0x33FFFFFF), CircleShape)
+                            .pressable { toDelete = p }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Delete, "מחק", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -325,7 +329,7 @@ fun SettingsScreen() {
             Section(title = "מודל ה-AI") {
                 ModelCard(status, compact = false)
                 if (status is ModelStore.Status.Ready) NpuPackCard(rememberModelStatus(ModelStore.NPU), alwaysShow = true)
-                if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל (משחרר ${ModelStore.sizeOnDisk(ctx) shr 20} MB)",
+                if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל · ${ModelStore.sizeOnDisk(ctx) shr 20} MB",
                     Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
             }
             Section(title = "ברירות מחדל") {
