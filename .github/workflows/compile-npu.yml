@@ -51,9 +51,6 @@ jobs:
           ls -la npu
 
       - name: Upload NPU pack to the models release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: models-v1
-          prerelease: true
-          make_latest: false
-          files: npu/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload models-v1 npu/* --clobber --repo "$GITHUB_REPOSITORY"
