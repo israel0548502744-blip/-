@@ -1,0 +1,74 @@
+name: Build TripoSR Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths: ["android/**", "convert/**", ".github/workflows/build-apk.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install export dependencies
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r convert/requirements.txt
+
+      - name: Cache TripoSR weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-stabilityai-TripoSR-v1
+
+      - name: Export TripoSR to ONNX
+        run: |
+          python convert/export_onnx.py --model stabilityai/TripoSR --out android/app/src/main/assets --verify
+          ls -la android/app/src/main/assets
+
+      - name: Download background-removal model (U2-Net-p, from rembg)
+        run: curl -fsSL -o android/app/src/main/assets/u2netp.onnx https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Build APK
+        run: |
+          gradle -p android assembleRelease --no-daemon
+          cp android/app/build/outputs/apk/release/app-release.apk TripoSR.apk
+          ls -la TripoSR.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TripoSR-apk
+          path: TripoSR.apk
+          compression-level: 0
+
+      - name: Publish as a GitHub release (easy download from the phone)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: TripoSR Android build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          files: TripoSR.apk
+          body: |
+            Install TripoSR.apk on the phone (allow installing from unknown sources).
+            Built from ${{ github.ref_name }} @ ${{ github.sha }}.

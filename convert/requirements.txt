@@ -1,0 +1,7 @@
+# torch is installed separately (CPU build is enough for exporting)
+transformers==4.35.0
+omegaconf==2.3.0
+einops==0.7.0
+huggingface-hub<0.26
+onnx>=1.16
+onnxruntime>=1.19
