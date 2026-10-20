@@ -98,7 +98,6 @@ private class MeshRenderer : GLSurfaceView.Renderer {
     private var indexCount = 0
     private var lineCount = 0
     private var gridCount = 0
-    private var axisStart = 0
     private var floorY = -0.5f
     private val proj = FloatArray(16)
     private val view = FloatArray(16)
@@ -143,9 +142,6 @@ private class MeshRenderer : GLSurfaceView.Renderer {
             g += listOf(-n * s, floorY, i * s, n * s, floorY, i * s)
         }
         gridCount = g.size / 3
-        axisStart = gridCount
-        // X (red), Y (green), Z (blue) axes from the floor centre.
-        g += listOf(0f, floorY, 0f, 0.6f, floorY, 0f, 0f, floorY, 0f, 0f, floorY + 0.6f, 0f, 0f, floorY, 0f, 0f, floorY, 0.6f)
         val arr = g.toFloatArray()
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[5])
         GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, arr.size * 4,
@@ -154,7 +150,7 @@ private class MeshRenderer : GLSurfaceView.Renderer {
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES30.glClearColor(0.043f, 0.051f, 0.09f, 1f)
+        GLES30.glClearColor(0.035f, 0.024f, 0.09f, 1f)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
@@ -217,13 +213,8 @@ private class MeshRenderer : GLSurfaceView.Renderer {
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[5])
             GLES30.glEnableVertexAttribArray(0)
             GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
-            GLES30.glUniform4f(loc("uFlatColor"), 0.45f, 0.42f, 0.75f, 0.28f)
+            GLES30.glUniform4f(loc("uFlatColor"), 0.62f, 0.5f, 1f, 0.22f)
             GLES30.glDrawArrays(GLES30.GL_LINES, 0, gridCount)
-            val axis = arrayOf(floatArrayOf(1f, 0.35f, 0.4f, 1f), floatArrayOf(0.3f, 0.9f, 0.5f, 1f), floatArrayOf(0.35f, 0.55f, 1f, 1f))
-            for (a in 0..2) {
-                GLES30.glUniform4f(loc("uFlatColor"), axis[a][0], axis[a][1], axis[a][2], axis[a][3])
-                GLES30.glDrawArrays(GLES30.GL_LINES, axisStart + a * 2, 2)
-            }
         }
 
         GLES30.glUniform1i(loc("uFlat"), 0)

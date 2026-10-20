@@ -57,6 +57,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -121,15 +123,18 @@ fun ResultScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar("המודל מוכן!", onBack = { AppState.back() }) {
-            IconButton(onClick = { renaming = true }) { Icon(Icons.Rounded.Edit, "שנה שם", tint = C.Text) }
-            IconButton(onClick = { export { Actions.share(ctx, it, format) } }) { Icon(Icons.Rounded.Share, "שתף", tint = C.Text) }
+        TopBar(project.name, onBack = { AppState.back() }) {
+            CircleIcon(Icons.Rounded.Edit, "שנה שם") { renaming = true }
+            CircleIcon(Icons.Rounded.Share, "שתף") { export { Actions.share(ctx, it, format) } }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.fillMaxWidth().height(420.dp).clip(RoundedCornerShape(24.dp)).background(C.Bg)
-                .border(1.dp, C.Stroke, RoundedCornerShape(24.dp))) {
-                AndroidView(
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.fillMaxWidth().height(440.dp).enter(0).glass(RoundedCornerShape(28.dp))) {
+                // Screenshot tests (inspection mode) have no OpenGL: show the mesh's thumbnail instead.
+                if (androidx.compose.ui.platform.LocalInspectionMode.current) {
+                    rememberThumb(project)?.let { androidx.compose.foundation.Image(it.asImageBitmap(), null,
+                        modifier = Modifier.fillMaxSize().padding(40.dp)) }
+                } else AndroidView(
                     factory = { MeshView(it).also { v -> view = v } },
                     modifier = Modifier.fillMaxSize(),
                     update = { v ->
@@ -216,18 +221,19 @@ fun ResultScreen() {
 }
 
 @Composable
-private fun sliderColors() = SliderDefaults.colors(thumbColor = C.Violet, activeTrackColor = C.Purple, inactiveTrackColor = C.Stroke)
+private fun sliderColors() = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = C.Magenta,
+    inactiveTrackColor = Color(0x22FFFFFF), activeTickColor = Color(0x66FFFFFF), inactiveTickColor = Color(0x33FFFFFF))
 
 @Composable
 private fun ViewToggle(icon: ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
-            .background(if (on) C.Purple.copy(alpha = 0.85f) else C.Card.copy(alpha = 0.85f))
-            .border(1.dp, if (on) C.Violet else C.Stroke, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-            Icon(icon, label, tint = Color.White, modifier = Modifier.size(22.dp))
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (on) C.Accent else Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x14FFFFFF))))
+            .border(1.dp, if (on) Color(0x55FFFFFF) else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+            .pressable(onClick = onClick), contentAlignment = Alignment.Center) {
+            Icon(icon, label, tint = Color.White, modifier = Modifier.size(20.dp))
         }
-        Text(label, color = C.Sub, fontSize = 10.sp)
+        Text(label, color = if (on) C.Text else C.Sub, fontSize = 10.sp)
     }
 }
 
@@ -236,7 +242,7 @@ private fun RenameDialog(p: Project, onDone: () -> Unit) {
     var name by remember { mutableStateOf(p.name) }
     AlertDialog(
         onDismissRequest = onDone,
-        containerColor = C.Card,
+        containerColor = C.CardHighHigh,
         title = { Text("שם המודל", color = C.Text) },
         text = { OutlinedTextField(name, { name = it }, singleLine = true, colors = fieldColors()) },
         confirmButton = { TextButton({ if (name.isNotBlank()) AppState.rename(p, name.trim()); onDone() }) { Text("שמור", color = C.Violet) } },
@@ -247,7 +253,8 @@ private fun RenameDialog(p: Project, onDone: () -> Unit) {
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = C.Violet, unfocusedBorderColor = C.Stroke, focusedTextColor = C.Text,
-    unfocusedTextColor = C.Text, cursorColor = C.Violet, focusedContainerColor = C.Bg, unfocusedContainerColor = C.Bg)
+    unfocusedTextColor = C.Text, cursorColor = C.Violet, focusedContainerColor = Color(0x14FFFFFF),
+    unfocusedContainerColor = Color(0x0DFFFFFF))
 
 @Composable
 fun ProjectsScreen() {
@@ -255,12 +262,12 @@ fun ProjectsScreen() {
     var toDelete by remember { mutableStateOf<Project?>(null) }
     val list = AppState.projects.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
     Column(Modifier.fillMaxSize()) {
-        TopBar("הפרויקטים שלי")
+        TopBar("הגלריה שלי")
         OutlinedTextField(query, { query = it }, singleLine = true, colors = fieldColors(),
             placeholder = { Text("חיפוש פרויקטים…", color = C.Sub) },
             leadingIcon = { Icon(Icons.Rounded.Search, null, tint = C.Sub) },
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp))
         if (list.isEmpty()) {
             Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
@@ -270,19 +277,17 @@ fun ProjectsScreen() {
                     fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("כל מודל שתיצור יישמר כאן", color = C.Sub, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
-                GradientButton("צור מודל חדש") { AppState.navigate(Screen.Create) }
+                GradientButton("צור מודל חדש", sparkles = true) { AppState.startNew() }
             }
         } else {
-            LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+            LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)) {
                 items(list, key = { it.id }) { p ->
                     Box {
                         ProjectThumb(p, Modifier.fillMaxWidth())
-                        Box(Modifier.align(Alignment.TopEnd).padding(12.dp).size(32.dp).clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black.copy(alpha = 0.55f)).clickable { toDelete = p },
-                            contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Delete, "מחק", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Box(Modifier.align(Alignment.TopEnd).padding(14.dp)) {
+                            CircleIcon(Icons.Rounded.Delete, "מחק", size = 34.dp) { toDelete = p }
                         }
                     }
                 }
@@ -291,7 +296,7 @@ fun ProjectsScreen() {
     }
     toDelete?.let { p ->
         AlertDialog(
-            onDismissRequest = { toDelete = null }, containerColor = C.Card,
+            onDismissRequest = { toDelete = null }, containerColor = C.CardHighHigh,
             title = { Text("למחוק את \"${p.name}\"?", color = C.Text) },
             confirmButton = { TextButton({ AppState.delete(p); toDelete = null }) { Text("מחק", color = C.Red) } },
             dismissButton = { TextButton({ toDelete = null }) { Text("ביטול", color = C.Sub) } },
@@ -315,8 +320,8 @@ fun SettingsScreen() {
 
     Column(Modifier.fillMaxSize()) {
         TopBar("הגדרות")
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Section(title = "מודל ה-AI") {
                 ModelCard(status, compact = false)
                 if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל (משחרר ${ModelStore.sizeOnDisk(ctx) shr 20} MB)",
@@ -384,7 +389,7 @@ fun SettingsScreen() {
         }
     }
     if (confirmDelete) AlertDialog(
-        onDismissRequest = { confirmDelete = false }, containerColor = C.Card,
+        onDismissRequest = { confirmDelete = false }, containerColor = C.CardHighHigh,
         title = { Text("למחוק את המודל?", color = C.Text) },
         text = { Text("תצטרך להוריד אותו שוב (1.7GB) כדי ליצור מודלים חדשים. הפרויקטים השמורים נשארים.", color = C.Sub) },
         confirmButton = { TextButton({ AppState.resetEngine(); ModelStore.delete(ctx); Capabilities.reset(ctx); confirmDelete = false }) { Text("מחק", color = C.Red) } },
@@ -401,8 +406,8 @@ fun DiagnosticsScreen() {
     val lastError = remember(tick) { CrashLog.lastError }
     Column(Modifier.fillMaxSize()) {
         TopBar("דוח מצב וקריסות")
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (crash != null) ReportSection("קריסה מהפעלה קודמת", crash, C.Red)
             if (lastError != null) ReportSection("שגיאה אחרונה", lastError, C.Orange)
             if (crash == null && lastError == null) Section {

@@ -5,11 +5,18 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +39,7 @@ import com.triposr.mobile.ui.ProcessingScreen
 import com.triposr.mobile.ui.ProjectsScreen
 import com.triposr.mobile.ui.ResultScreen
 import com.triposr.mobile.ui.SettingsScreen
+import com.triposr.mobile.ui.SpaceBackground
 import com.triposr.mobile.ui.TripoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         handleIntent(intent)
         setContent { TripoTheme { App() } }
     }
@@ -59,7 +68,7 @@ class MainActivity : ComponentActivity() {
                     Actions.loadBitmap(this, uri)?.let { AppState.setImage(it); AppState.navigate(Screen.Create) }
                 }
             }
-            CreateWidget.ACTION_CREATE -> { AppState.navigate(Screen.Create); pendingPick = AppState.input == null }
+            CreateWidget.ACTION_CREATE -> { AppState.startNew(); pendingPick = AppState.input == null }
             CreateWidget.ACTION_PROJECTS -> AppState.navigateRoot(Screen.Projects)
             ProcessingService.ACTION_RESULT -> AppState.showResult()
         }
@@ -95,23 +104,33 @@ class MainActivity : ComponentActivity() {
         val screen = AppState.screen
         BackHandler(enabled = AppState.backStack.size > 1) { AppState.back() }
 
-        Column(Modifier.fillMaxSize().background(C.Bg).systemBarsPadding()) {
-            Box(Modifier.weight(1f)) {
-                when (screen) {
-                    Screen.Home -> HomeScreen()
-                    Screen.Create -> CreateScreen(
-                        onGallery = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onCamera = { camera.launch(cameraUri) },
-                        onFiles = { files.launch("image/*") },
-                    )
-                    Screen.Processing -> ProcessingScreen()
-                    Screen.Result -> ResultScreen()
-                    Screen.Projects -> ProjectsScreen()
-                    Screen.Settings -> SettingsScreen()
-                    Screen.Diagnostics -> DiagnosticsScreen()
+        Box(Modifier.fillMaxSize().background(C.Bg)) {
+            SpaceBackground()
+            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+                AnimatedContent(
+                    targetState = screen,
+                    modifier = Modifier.weight(1f),
+                    transitionSpec = {
+                        (fadeIn(tween(320)) + scaleIn(tween(320), initialScale = 0.97f)) togetherWith fadeOut(tween(180))
+                    },
+                    label = "screen",
+                ) { s ->
+                    when (s) {
+                        Screen.Home -> HomeScreen()
+                        Screen.Create -> CreateScreen(
+                            onGallery = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onCamera = { camera.launch(cameraUri) },
+                            onFiles = { files.launch("image/*") },
+                        )
+                        Screen.Processing -> ProcessingScreen()
+                        Screen.Result -> ResultScreen()
+                        Screen.Projects -> ProjectsScreen()
+                        Screen.Settings -> SettingsScreen()
+                        Screen.Diagnostics -> DiagnosticsScreen()
+                    }
                 }
+                if (screen in listOf(Screen.Home, Screen.Projects, Screen.Settings, Screen.Diagnostics)) BottomNav(screen)
             }
-            if (screen in listOf(Screen.Home, Screen.Projects, Screen.Settings, Screen.Diagnostics)) BottomNav(screen)
         }
     }
 }

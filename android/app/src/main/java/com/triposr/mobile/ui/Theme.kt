@@ -1,10 +1,21 @@
 package com.triposr.mobile.ui
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,110 +33,265 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.triposr.mobile.R
+import kotlin.math.sin
+import kotlin.random.Random
 
+/** Design tokens: deep-space purple, glass surfaces, pink→orange primary action. */
 object C {
-    val Bg = Color(0xFF0B0D17)
-    val Card = Color(0xFF151827)
-    val CardHigh = Color(0xFF1E2235)
-    val Stroke = Color(0xFF2A2F45)
-    val Purple = Color(0xFF7C4DFF)
-    val Violet = Color(0xFFA855F7)
-    val Orange = Color(0xFFFF8A4C)
-    val Text = Color(0xFFF4F4FA)
-    val Sub = Color(0xFF9AA0B8)
-    val Green = Color(0xFF34D399)
-    val Red = Color(0xFFF87171)
-    val Accent = Brush.horizontalGradient(listOf(Purple, Orange))
-    val AccentSoft = Brush.linearGradient(listOf(Color(0xFF241A55), Color(0xFF151827)))
+    val Bg = Color(0xFF07051A)
+    val BgMid = Color(0xFF150B36)
+    val BgLow = Color(0xFF0D0824)
+
+    // Glass surfaces (translucent white over the space background).
+    val Card = Color(0xFF16112F)
+    val CardHigh = Color(0xFF221A45)
+    val Stroke = Color(0x29FFFFFF)
+    val GlassTop = Color(0x1AFFFFFF)
+    val GlassBottom = Color(0x08FFFFFF)
+
+    val Purple = Color(0xFF8B5CF6)
+    val Violet = Color(0xFFC084FC)
+    val Magenta = Color(0xFFD946EF)
+    val Pink = Color(0xFFF0509E)
+    val Orange = Color(0xFFFF9554)
+    val Text = Color(0xFFF6F3FF)
+    val Sub = Color(0xFFB3ABD6)
+    val Faint = Color(0xFF7D75A8)
+    val Green = Color(0xFF4ADE80)
+    val Red = Color(0xFFFB7185)
+    val Amber = Color(0xFFFBBF24)
+
+    val Primary = Brush.horizontalGradient(listOf(Color(0xFFE6479F), Color(0xFFFF6F6A), Color(0xFFFFA04C)))
+    val Accent = Brush.linearGradient(listOf(Purple, Magenta))
+    val Title = Brush.horizontalGradient(listOf(Color(0xFFF1ECFF), Color(0xFFC3B2FF), Color(0xFFEADFFF)))
+    val GlassFill = Brush.verticalGradient(listOf(GlassTop, GlassBottom))
+    val GlassEdge = Brush.verticalGradient(listOf(Color(0x40FFFFFF), Color(0x0AFFFFFF)))
 }
 
+@OptIn(ExperimentalTextApi::class)
+private fun rubik(weight: Int) = Font(R.font.rubik, FontWeight(weight),
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
+
+val Rubik = FontFamily(rubik(400), rubik(500), rubik(600), rubik(700), rubik(800))
+
+/** Screenshot tests turn animations off so frames are deterministic. */
+val LocalAnimations = staticCompositionLocalOf { true }
+
 @Composable
-fun TripoTheme(content: @Composable () -> Unit) {
+fun TripoTheme(animations: Boolean = true, content: @Composable () -> Unit) {
+    val base = TextStyle(fontFamily = Rubik, color = C.Text)
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = C.Purple, secondary = C.Violet, tertiary = C.Orange,
             background = C.Bg, surface = C.Card, onSurface = C.Text, onBackground = C.Text,
-            surfaceVariant = C.CardHigh, outline = C.Stroke,
+            surfaceVariant = C.CardHigh, outline = C.Stroke, surfaceContainer = C.CardHigh,
         ),
+        typography = Typography().let { t ->
+            Typography(
+                displayLarge = t.displayLarge.merge(base), headlineLarge = t.headlineLarge.merge(base),
+                headlineMedium = t.headlineMedium.merge(base), titleLarge = t.titleLarge.merge(base),
+                titleMedium = t.titleMedium.merge(base), bodyLarge = t.bodyLarge.merge(base),
+                bodyMedium = t.bodyMedium.merge(base), bodySmall = t.bodySmall.merge(base),
+                labelLarge = t.labelLarge.merge(base), labelMedium = t.labelMedium.merge(base),
+                labelSmall = t.labelSmall.merge(base),
+            )
+        },
     ) {
         // The whole UI is Hebrew, so lay it out right-to-left regardless of the phone language.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, content = content)
+        CompositionLocalProvider(
+            LocalLayoutDirection provides LayoutDirection.Rtl,
+            LocalAnimations provides animations,
+            content = content,
+        )
     }
+}
+
+/** Deep-space gradient with slowly drifting nebula glows and faint twinkling stars. */
+@Composable
+fun SpaceBackground(modifier: Modifier = Modifier) {
+    val animate = LocalAnimations.current
+    val t = if (animate) {
+        val inf = rememberInfiniteTransition(label = "space")
+        inf.animateFloat(0f, 1f, infiniteRepeatable(tween(16000, easing = LinearEasing)), label = "t").value
+    } else 0.3f
+    val stars = remember {
+        val r = Random(7)
+        List(70) { Triple(Offset(r.nextFloat(), r.nextFloat()), r.nextFloat() * 1.6f + 0.6f, r.nextFloat() * 6.28f) }
+    }
+    Canvas(modifier.fillMaxSize()) {
+        drawRect(Brush.verticalGradient(listOf(C.BgMid, C.Bg, C.BgLow)))
+        val w = size.width; val h = size.height
+        val phase = t * 6.2832f
+        drawCircle(Brush.radialGradient(listOf(Color(0x557C3AED), Color.Transparent),
+            center = Offset(w * (0.15f + 0.05f * sin(phase)), h * 0.12f), radius = w * 0.9f),
+            radius = w * 0.9f, center = Offset(w * (0.15f + 0.05f * sin(phase)), h * 0.12f))
+        drawCircle(Brush.radialGradient(listOf(Color(0x40DB2777), Color.Transparent),
+            center = Offset(w * 0.95f, h * (0.55f + 0.04f * sin(phase + 2f))), radius = w * 0.75f),
+            radius = w * 0.75f, center = Offset(w * 0.95f, h * (0.55f + 0.04f * sin(phase + 2f))))
+        drawCircle(Brush.radialGradient(listOf(Color(0x332563EB), Color.Transparent),
+            center = Offset(w * 0.1f, h * 0.9f), radius = w * 0.8f),
+            radius = w * 0.8f, center = Offset(w * 0.1f, h * 0.9f))
+        for ((p, r, ph) in stars) {
+            val a = 0.25f + 0.35f * (0.5f + 0.5f * sin(phase * 3f + ph))
+            drawCircle(Color.White.copy(alpha = a), radius = r, center = Offset(p.x * w, p.y * h))
+        }
+    }
+}
+
+/** Frosted-glass surface. */
+fun Modifier.glass(shape: Shape = RoundedCornerShape(24.dp), strong: Boolean = false): Modifier =
+    this.clip(shape)
+        .background(if (strong) Brush.verticalGradient(listOf(Color(0x24FFFFFF), Color(0x0FFFFFFF))) else C.GlassFill)
+        .border(1.dp, C.GlassEdge, shape)
+
+/** Fades and slides content in once, staggered by [index]. */
+@Composable
+fun Modifier.enter(index: Int = 0): Modifier {
+    if (!LocalAnimations.current) return this
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(60L * index)
+        progress.animateTo(1f, tween(480, easing = FastOutSlowInEasing))
+    }
+    return this.graphicsLayer {
+        alpha = progress.value
+        translationY = (1f - progress.value) * 28.dp.toPx()
+    }
+}
+
+/** Slight shrink while pressed, for anything clickable. */
+@Composable
+fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val s by animateFloatAsState(if (pressed) 0.96f else 1f, tween(120), label = "press")
+    return this.scale(s).clickable(source, indication = null, enabled = enabled, onClick = onClick)
+}
+
+@Composable
+fun GradientText(text: String, size: TextUnit, modifier: Modifier = Modifier, brush: Brush = C.Title,
+                 weight: FontWeight = FontWeight.ExtraBold) {
+    Text(text, modifier = modifier, style = TextStyle(brush = brush, fontSize = size, fontWeight = weight,
+        fontFamily = Rubik, letterSpacing = (-0.5).sp))
 }
 
 @Composable
 fun TopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (onBack != null) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "חזרה", tint = C.Text) }
-        } else Spacer(Modifier.width(16.dp))
-        Text(title, color = C.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        if (onBack != null) CircleIcon(Icons.AutoMirrored.Rounded.ArrowBack, "חזרה", onClick = onBack)
+        Text(title, color = C.Text, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
         actions()
+    }
+}
+
+@Composable
+fun CircleIcon(icon: ImageVector, label: String, size: Dp = 42.dp, tint: Color = C.Text, onClick: () -> Unit) {
+    Box(Modifier.size(size).glass(CircleShape).pressable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, label, tint = tint, modifier = Modifier.size(size * 0.5f))
     }
 }
 
 @Composable
 fun Section(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(C.Card)
-            .border(1.dp, C.Stroke, RoundedCornerShape(20.dp)).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier.fillMaxWidth().glass().padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (title != null) Text(title, color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         content()
     }
 }
 
+/** Pill-shaped primary action with a glow and a soft light sweep. */
 @Composable
 fun GradientButton(
     text: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    sparkles: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier.height(56.dp).clip(RoundedCornerShape(18.dp)).background(C.Accent)
-            .alpha(if (enabled) 1f else 0.45f).clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+    val animate = LocalAnimations.current && enabled
+    val sweep = if (animate) {
+        val inf = rememberInfiniteTransition(label = "sweep")
+        inf.animateFloat(-0.4f, 1.4f, infiniteRepeatable(tween(2600, delayMillis = 900, easing = LinearEasing)), label = "x").value
+    } else -1f
+    Box(
+        modifier.height(58.dp)
+            .shadow(if (enabled) 18.dp else 0.dp, CircleShape, ambientColor = C.Pink, spotColor = C.Pink)
+            .clip(CircleShape).background(C.Primary)
+            .drawWithContent {
+                drawContent()
+                if (sweep > -0.5f) {
+                    val x = size.width * sweep
+                    drawRect(Brush.linearGradient(listOf(Color.Transparent, Color(0x55FFFFFF), Color.Transparent),
+                        start = Offset(x - 120f, 0f), end = Offset(x + 120f, size.height)))
+                }
+            }
+            .alpha(if (enabled) 1f else 0.45f)
+            .pressable(enabled, onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) { Icon(icon, null, tint = Color.White); Spacer(Modifier.width(8.dp)) }
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 22.dp)) {
+            if (sparkles) { Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)) }
+            else if (icon != null) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(21.dp)); Spacer(Modifier.width(8.dp)) }
+            Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+            if (sparkles) { Spacer(Modifier.width(10.dp)); Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+        }
     }
 }
 
+/** Secondary glass pill button. */
 @Composable
 fun SoftButton(
     text: String,
@@ -136,35 +302,32 @@ fun SoftButton(
     onClick: () -> Unit,
 ) {
     Row(
-        modifier.height(52.dp).clip(RoundedCornerShape(16.dp)).background(C.CardHigh)
-            .border(1.dp, C.Stroke, RoundedCornerShape(16.dp))
-            .alpha(if (enabled) 1f else 0.45f).clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp),
+        modifier.height(52.dp).glass(CircleShape, strong = true).alpha(if (enabled) 1f else 0.45f)
+            .pressable(enabled, onClick).padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { Icon(icon, null, tint = color, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(text, color = color, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(text, color = color, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1)
     }
 }
 
 @Composable
 fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, disabled: (T) -> Boolean = { false }) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Bg).padding(4.dp),
+        Modifier.fillMaxWidth().clip(CircleShape).background(Color(0x33000000)).border(1.dp, C.Stroke, CircleShape).padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         for (o in options) {
             val sel = o == selected
+            val textColor by animateColorAsState(if (sel) Color.White else if (disabled(o)) C.Faint else C.Sub, label = "seg")
             Box(
-                Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(11.dp))
-                    .then(if (sel) Modifier.background(Brush.horizontalGradient(listOf(C.Purple, C.Violet))) else Modifier)
-                    .then(if (sel) Modifier else Modifier.border(BorderStroke(1.dp, C.Stroke), RoundedCornerShape(11.dp)))
-                    .alpha(if (disabled(o)) 0.4f else 1f)
+                Modifier.weight(1f).height(40.dp).clip(CircleShape)
+                    .then(if (sel) Modifier.background(C.Accent) else Modifier)
                     .clickable { onSelect(o) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label(o), color = if (sel) Color.White else C.Sub, fontSize = 13.sp,
+                Text(label(o), color = textColor, fontSize = 13.sp,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
             }
         }
@@ -181,7 +344,8 @@ fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boo
         Switch(
             checked = checked, onCheckedChange = onChange,
             colors = SwitchDefaults.colors(checkedTrackColor = C.Purple, checkedThumbColor = Color.White,
-                uncheckedTrackColor = C.CardHigh, uncheckedBorderColor = C.Stroke),
+                checkedBorderColor = C.Violet, uncheckedTrackColor = Color(0x22FFFFFF),
+                uncheckedThumbColor = C.Sub, uncheckedBorderColor = C.Stroke),
         )
     }
 }
@@ -190,34 +354,40 @@ enum class StepState { DONE, ACTIVE, PENDING }
 
 @Composable
 fun StepRow(label: String, state: StepState, extra: String? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
+    val pulse = if (state == StepState.ACTIVE && LocalAnimations.current) {
+        rememberInfiniteTransition(label = "pulse").animateFloat(0.5f, 1f,
+            infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "p").value
+    } else 1f
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
         when (state) {
             StepState.DONE -> Icon(Icons.Rounded.CheckCircle, null, tint = C.Green, modifier = Modifier.size(20.dp))
             StepState.ACTIVE -> Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(C.Violet))
+                Box(Modifier.size(18.dp).alpha(0.3f * pulse).clip(CircleShape).background(C.Violet))
+                Box(Modifier.size(9.dp).clip(CircleShape).background(C.Violet))
             }
-            StepState.PENDING -> Icon(Icons.Rounded.RadioButtonUnchecked, null, tint = C.Stroke, modifier = Modifier.size(20.dp))
+            StepState.PENDING -> Icon(Icons.Rounded.RadioButtonUnchecked, null, tint = C.Faint, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.width(10.dp))
-        Text(label, color = when (state) { StepState.DONE -> C.Green; StepState.ACTIVE -> C.Text; else -> C.Sub },
-            fontSize = 14.sp, fontWeight = if (state == StepState.ACTIVE) FontWeight.Bold else FontWeight.Normal,
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = when (state) { StepState.DONE -> C.Sub; StepState.ACTIVE -> C.Text; else -> C.Faint },
+            fontSize = 14.sp, fontWeight = if (state == StepState.ACTIVE) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.weight(1f))
-        if (extra != null) Text(extra, color = C.Sub, fontSize = 12.sp)
+        if (extra != null) Text(extra, color = C.Violet, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
+/** Gradient progress ring with a soft glow underneath. */
 @Composable
-fun ProgressRing(progress: Float, modifier: Modifier = Modifier, stroke: Float = 14f, content: @Composable () -> Unit) {
+fun ProgressRing(progress: Float, modifier: Modifier = Modifier, stroke: Dp = 10.dp, content: @Composable () -> Unit) {
+    val p by animateFloatAsState(progress.coerceIn(0f, 1f), tween(500), label = "ring")
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val d = size.minDimension - stroke * 2
+            val sw = stroke.toPx()
+            val d = size.minDimension - sw * 2
             val tl = Offset((size.width - d) / 2, (size.height - d) / 2)
-            drawArc(C.Stroke, 0f, 360f, false, tl, Size(d, d), style = Stroke(stroke))
-            drawArc(
-                Brush.sweepGradient(listOf(C.Purple, C.Violet, C.Orange, C.Purple)),
-                -90f, 360f * progress.coerceIn(0f, 1f), false, tl, Size(d, d),
-                style = Stroke(stroke, cap = StrokeCap.Round),
-            )
+            val ring = Brush.sweepGradient(listOf(C.Purple, C.Magenta, C.Pink, C.Orange, C.Purple))
+            drawArc(Color(0x1FFFFFFF), 0f, 360f, false, tl, Size(d, d), style = Stroke(sw))
+            drawArc(ring, -90f, 360f * p, false, tl, Size(d, d), alpha = 0.25f, style = Stroke(sw * 2.6f, cap = StrokeCap.Round))
+            drawArc(ring, -90f, 360f * p, false, tl, Size(d, d), style = Stroke(sw, cap = StrokeCap.Round))
         }
         content()
     }
@@ -225,7 +395,26 @@ fun ProgressRing(progress: Float, modifier: Modifier = Modifier, stroke: Float =
 
 @Composable
 fun Chip(text: String, color: Color = C.Violet) {
-    Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 8.dp, vertical = 3.dp))
+    Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+        modifier = Modifier.clip(CircleShape).background(color.copy(alpha = 0.14f))
+            .border(1.dp, color.copy(alpha = 0.25f), CircleShape)
+            .padding(horizontal = 10.dp, vertical = 4.dp))
+}
+
+/** Rounded square with a gradient and an icon (feature/menu tiles). */
+@Composable
+fun IconTile(icon: ImageVector, size: Dp = 48.dp, brush: Brush = C.Accent) {
+    Box(Modifier.size(size).shadow(10.dp, RoundedCornerShape(size / 3.2f), ambientColor = C.Purple, spotColor = C.Purple)
+        .clip(RoundedCornerShape(size / 3.2f)).background(brush), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
+/** Thin gradient progress bar. */
+@Composable
+fun GlowBar(progress: Float, modifier: Modifier = Modifier, brush: Brush = C.Accent) {
+    val p by animateFloatAsState(progress.coerceIn(0f, 1f), tween(400), label = "bar")
+    Box(modifier.height(6.dp).clip(CircleShape).background(Color(0x22FFFFFF))) {
+        Box(Modifier.fillMaxWidth(p).height(6.dp).clip(CircleShape).background(brush))
+    }
 }

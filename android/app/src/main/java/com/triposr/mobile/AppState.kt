@@ -110,7 +110,7 @@ object AppState {
                     "מעכשיו המצב האוטומטי ידלג עליו. אפשר לאפס בהגדרות, ודוח הקריסה זמין להעתקה."
             }
         }
-        scope.launch { loadProjects() }
+        scope.launch { reloadProjects() }
     }
 
     fun crashedBefore(b: Backend) = prefs().getBoolean("crashed_${b.name}", false)
@@ -186,6 +186,7 @@ object AppState {
                     originalMesh = out.mesh
                     mesh = out.mesh
                     project = p
+                    input = null // the next "create" starts from a fresh image
                     job = job?.copy(done = true, stageProgress = 1f, status = "המודל מוכן!")
                     if (screen == Screen.Processing) showResult()
                 }
@@ -202,6 +203,15 @@ object AppState {
                 prefs().edit().remove("active_backend").commit()
                 ProcessingService.finished(app)
             }
+        }
+    }
+
+    /** The "+" / "create" entry point: shows the running job, or a fresh create screen. */
+    fun startNew() {
+        if (isRunning) navigate(Screen.Processing)
+        else {
+            if (job?.done == true) job = null
+            navigate(Screen.Create)
         }
     }
 
@@ -251,7 +261,8 @@ object AppState {
         }.toString())
     }
 
-    private suspend fun loadProjects() {
+    /** Reads saved projects from disk (blocking; snapshot state lists are safe to update from any thread). */
+    fun reloadProjects() {
         val list = projectsDir().listFiles()?.mapNotNull { dir ->
             runCatching {
                 val j = JSONObject(File(dir, "meta.json").readText())
@@ -259,7 +270,7 @@ object AppState {
                     j.optString("quality"), j.optDouble("seconds"), j.optInt("vertices"), j.optInt("triangles"))
             }.getOrNull()
         }?.sortedByDescending { it.created } ?: emptyList()
-        withContext(Dispatchers.Main) { projects.clear(); projects.addAll(list) }
+        synchronized(projects) { projects.clear(); projects.addAll(list) }
     }
 
     fun open(p: Project) {
