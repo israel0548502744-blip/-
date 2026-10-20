@@ -143,9 +143,23 @@ def load_model(model_dir, random_weights):
     return TSR.from_pretrained(model_dir, config_name="config.yaml", weight_name="model.ckpt")
 
 
+def bake_position_embeddings(model, size=512):
+    """DINO was trained at 224px. transformers resizes its position embeddings to 512px on
+    every call, which doesn't trace. The input size is fixed, so resize them once up front;
+    ViT then sees matching sizes and uses them as is."""
+    emb = model.image_tokenizer.model.embeddings
+    patch = model.image_tokenizer.model.config.patch_size
+    n = (size // patch) ** 2 + 1
+    with torch.no_grad():
+        dummy = torch.zeros(1, n, emb.position_embeddings.shape[-1])
+        resized = emb.interpolate_pos_encoding(dummy, size, size)
+    emb.position_embeddings = nn.Parameter(resized.clone())
+
+
 def export(model, out_dir, opset):
     os.makedirs(out_dir, exist_ok=True)
     model.eval()
+    bake_position_embeddings(model)
     encoder, decoder = Encoder(model).eval(), Decoder(model).eval()
 
     image = torch.rand(1, 3, 512, 512)
@@ -181,13 +195,18 @@ def export(model, out_dir, opset):
     return encoder, decoder
 
 
-def verify(model, encoder, decoder, out_dir):
-    import onnxruntime as ort
-
+def reference(model):
+    """Run the untouched TripoSR forward pass, before export modifies the model."""
     torch.manual_seed(1)
     image = torch.rand(1, 3, 512, 512)
     with torch.no_grad():
-        ref_codes = model(image.permute(0, 2, 3, 1), device="cpu")[0]
+        return image, model(image.permute(0, 2, 3, 1), device="cpu")[0]
+
+
+def verify(model, encoder, decoder, out_dir, image, ref_codes):
+    import onnxruntime as ort
+
+    with torch.no_grad():
         enc_codes = encoder(image)
     print("encoder wrapper vs TSR.forward max diff:", (ref_codes - enc_codes).abs().max().item())
 
@@ -217,9 +236,11 @@ def main():
     model = load_model(args.model, args.random_weights)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"TripoSR loaded: {n_params / 1e6:.1f}M parameters", flush=True)
+    model.eval()
+    ref = reference(model) if args.verify else None
     encoder, decoder = export(model, args.out, args.opset)
     if args.verify:
-        verify(model, encoder, decoder, args.out)
+        verify(model, encoder, decoder, args.out, *ref)
 
 
 if __name__ == "__main__":
