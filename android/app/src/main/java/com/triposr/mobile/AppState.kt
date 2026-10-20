@@ -218,7 +218,8 @@ object AppState {
     /** Opens the finished job's model (from the processing screen, the home card or the notification). */
     fun showResult() {
         if (mesh == null) return
-        if (screen == Screen.Processing) backStack.removeAt(backStack.lastIndex)
+        // Back from a fresh model goes to the gallery, not to the create screen it came from.
+        navigateRoot(Screen.Projects)
         navigate(Screen.Result)
         if (job?.done == true) job = null
     }

@@ -180,7 +180,6 @@ fun HomeScreen() {
         AppState.notice?.let { NoticeCard(it) { AppState.notice = null } }
         UpdateCard()
         if (status !is ModelStore.Status.Ready) ModelCard(status)
-        else NpuPackCard(npuStatus)
 
         GradientButton("צור מודל 3D", Modifier.fillMaxWidth().enter(i++), sparkles = true,
             enabled = status is ModelStore.Status.Ready) { AppState.startNew() }
@@ -668,26 +667,21 @@ fun BackendPicker(choice: Backend?, onChoice: (Backend?) -> Unit) {
 }
 
 /**
- * Offers the NPU pack (models pre-compiled for this phone's Snapdragon) once the main model is
- * installed. Hidden on other chips and while the pack isn't published yet.
+ * Offers the NPU pack (models pre-compiled for this phone's Snapdragon) in Settings once the main
+ * model is installed. Shows nothing on chips without a pack or when the pack isn't published.
  */
 @Composable
-fun NpuPackCard(status: ModelStore.Status, alwaysShow: Boolean = false) {
+fun NpuPackCard(status: ModelStore.Status) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    if (com.triposr.mobile.NpuPack.chip() == null) {
-        if (alwaysShow) Text("אין חבילת NPU לשבב הזה · ${android.os.Build.SOC_MODEL}. GPU ו-CPU עובדים כרגיל.", color = C.Sub, fontSize = 13.sp)
-        return
-    }
+    if (com.triposr.mobile.NpuPack.chip() == null) return
     var size by remember { mutableStateOf<Long?>(null) }
-    var checked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         size = runCatching { ModelStore.availableSize(ModelStore.NPU) }.getOrNull()
-        checked = true
     }
     when (status) {
-        ModelStore.Status.Ready -> if (alwaysShow) Row(verticalAlignment = Alignment.CenterVertically) {
+        ModelStore.Status.Ready -> Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.CheckCircle, null, tint = C.Green, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("חבילת NPU מותקנת · ${ModelStore.sizeOnDisk(ctx, ModelStore.NPU) shr 20} MB", color = C.Green)
@@ -703,10 +697,7 @@ fun NpuPackCard(status: ModelStore.Status, alwaysShow: Boolean = false) {
         }
         else -> {
             val s = size
-            if (s == null) {
-                if (alwaysShow && checked) Text("חבילת NPU לטלפון הזה עוד לא פורסמה.", color = C.Sub, fontSize = 13.sp)
-                return
-            }
+            if (s == null) return
             Section {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconTile(Icons.Rounded.Memory, 44.dp, C.Primary)
