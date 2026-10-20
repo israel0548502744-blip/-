@@ -324,6 +324,7 @@ fun SettingsScreen() {
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Section(title = "מודל ה-AI") {
                 ModelCard(status, compact = false)
+                if (status is ModelStore.Status.Ready) NpuPackCard(rememberModelStatus(ModelStore.NPU), alwaysShow = true)
                 if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל (משחרר ${ModelStore.sizeOnDisk(ctx) shr 20} MB)",
                     Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
             }

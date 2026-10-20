@@ -62,14 +62,22 @@ enum class Quality(val label: String, val resolution: Int, val hint: String) {
     HIGH("גבוהה", 256, "הכי מפורט, איטי יותר"),
 }
 
+/** A set of files downloaded together from the models release. */
+class Pack(val key: String, val title: String, val files: () -> List<String>)
+
 /**
  * The TripoSR ONNX models (~1.7 GB) are not inside the APK. They are published once as a
  * GitHub release and downloaded from inside the app with Android's DownloadManager, which keeps
  * going in the background, resumes after network drops and shows a notification.
+ *
+ * Two packs: MAIN (the ONNX models, needed by everyone) and NPU (models pre-compiled in CI for
+ * this phone's Snapdragon chip, optional; see convert/compile_npu.py).
  */
 object ModelStore {
     const val RELEASE_TAG = "models-v1"
     val FILES = listOf(TripoEngine.ENCODER, TripoEngine.DECODER)
+    val MAIN = Pack("models", "TripoSR — מודל תלת־ממד") { FILES }
+    val NPU = Pack("npu", "TripoSR — חבילת NPU") { NpuPack.files() }
 
     sealed interface Status {
         data object Missing : Status
@@ -78,7 +86,7 @@ object ModelStore {
         data class Failed(val message: String) : Status
     }
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences("models", Context.MODE_PRIVATE)
+    private fun prefs(ctx: Context, pack: Pack) = ctx.getSharedPreferences(pack.key, Context.MODE_PRIVATE)
     private fun dir(ctx: Context) = ctx.getExternalFilesDir("models")!!
     fun file(ctx: Context, name: String) = File(dir(ctx), name)
 
@@ -86,44 +94,54 @@ object ModelStore {
      * Ready only after DownloadManager reported success. File size alone is not enough:
      * DownloadManager pre-allocates the full file size before the download finishes.
      */
-    fun isReady(ctx: Context) = prefs(ctx).getBoolean("complete", false) && sizesMatch(ctx)
+    fun isReady(ctx: Context, pack: Pack = MAIN) =
+        pack.files().isNotEmpty() && prefs(ctx, pack).getBoolean("complete", false) && sizesMatch(ctx, pack)
 
-    private fun sizesMatch(ctx: Context) = FILES.all { name ->
+    private fun sizesMatch(ctx: Context, pack: Pack) = pack.files().all { name ->
         val f = file(ctx, name)
-        f.exists() && f.length() > 0 && f.length() == prefs(ctx).getLong("size_$name", -1)
+        f.exists() && f.length() > 0 && f.length() == prefs(ctx, pack).getLong("size_$name", -1)
     }
 
-    suspend fun startDownload(ctx: Context) {
+    /** Total size of the pack in the release, or null if the release doesn't have all its files. */
+    suspend fun availableSize(pack: Pack): Long? {
+        val assets = githubJson("releases/tags/$RELEASE_TAG").assets().associateBy { it.name }
+        val files = pack.files()
+        if (files.isEmpty() || files.any { it !in assets }) return null
+        return files.sumOf { assets.getValue(it).size }
+    }
+
+    suspend fun startDownload(ctx: Context, pack: Pack = MAIN) {
         val assets = githubJson("releases/tags/$RELEASE_TAG").assets().associateBy { it.name }
         val dm = ctx.getSystemService(DownloadManager::class.java)
-        cancel(ctx)
-        val edit = prefs(ctx).edit()
-        for (name in FILES) {
+        cancel(ctx, pack)
+        val edit = prefs(ctx, pack).edit()
+        for (name in pack.files()) {
             val asset = assets[name] ?: throw IllegalStateException("$name missing from release $RELEASE_TAG")
             file(ctx, name).delete()
             val req = DownloadManager.Request(Uri.parse(asset.url))
-                .setTitle("TripoSR — מודל תלת־ממד")
+                .setTitle(pack.title)
                 .setDescription(name)
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(ctx, "models", name)
             edit.putLong("size_$name", asset.size).putLong("id_$name", dm.enqueue(req))
         }
         edit.putBoolean("complete", false).apply()
-        CrashLog.log("Model download started: ${assets.values.sumOf { it.size } shr 20} MB")
+        CrashLog.log("Download ${pack.key} started: ${pack.files().sumOf { assets[it]?.size ?: 0 } shr 20} MB")
     }
 
-    fun status(ctx: Context): Status {
-        if (isReady(ctx)) return Status.Ready
+    fun status(ctx: Context, pack: Pack = MAIN): Status {
+        if (isReady(ctx, pack)) return Status.Ready
+        val files = pack.files()
         val dm = ctx.getSystemService(DownloadManager::class.java)
-        val ids = FILES.map { prefs(ctx).getLong("id_$it", -1) }.filter { it >= 0 }
+        val ids = files.map { prefs(ctx, pack).getLong("id_$it", -1) }.filter { it >= 0 }
         if (ids.isEmpty()) return Status.Missing
         var done = 0L
-        var total = FILES.sumOf { prefs(ctx).getLong("size_$it", 0) }
+        var total = files.sumOf { prefs(ctx, pack).getLong("size_$it", 0) }
         var running = false
         var succeeded = 0
         dm.query(DownloadManager.Query().setFilterById(*ids.toLongArray())).use { c ->
             if (c.count == 0) return Status.Missing
-            if (c.count < FILES.size) return Status.Failed("ההורדה הופסקה, נסה שוב")
+            if (c.count < files.size) return Status.Failed("ההורדה הופסקה, נסה שוב")
             while (c.moveToNext()) {
                 val st = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 done += c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
@@ -138,38 +156,59 @@ object ModelStore {
             }
         }
         if (total <= 0) total = 1
-        if (running || succeeded < FILES.size) return Status.Downloading(done, total)
-        if (!sizesMatch(ctx)) return Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
-        prefs(ctx).edit().putBoolean("complete", true).apply()
-        CrashLog.log("Model download complete")
+        if (running || succeeded < files.size) return Status.Downloading(done, total)
+        if (!sizesMatch(ctx, pack)) return Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
+        prefs(ctx, pack).edit().putBoolean("complete", true).apply()
+        CrashLog.log("Download ${pack.key} complete")
         return Status.Ready
     }
 
-    fun cancel(ctx: Context) {
+    fun cancel(ctx: Context, pack: Pack = MAIN) {
         val dm = ctx.getSystemService(DownloadManager::class.java)
-        val edit = prefs(ctx).edit()
-        for (name in FILES) {
-            val id = prefs(ctx).getLong("id_$name", -1)
+        val ready = isReady(ctx, pack)
+        val edit = prefs(ctx, pack).edit()
+        for (name in pack.files()) {
+            val id = prefs(ctx, pack).getLong("id_$name", -1)
             // remove() also deletes the file, so only for unfinished downloads.
-            if (id >= 0 && !isReady(ctx)) dm.remove(id)
+            if (id >= 0 && !ready) dm.remove(id)
             edit.remove("id_$name")
         }
         edit.apply()
     }
 
-    fun delete(ctx: Context) {
-        cancel(ctx)
-        FILES.forEach { file(ctx, it).delete() }
-        ctx.filesDir.listFiles { f -> f.name.endsWith("_qnn_ctx.onnx") }?.forEach { it.delete() }
-        prefs(ctx).edit().clear().apply()
+    fun delete(ctx: Context, pack: Pack = MAIN) {
+        cancel(ctx, pack)
+        pack.files().forEach { file(ctx, it).delete() }
+        if (pack === MAIN) ctx.filesDir.listFiles { f -> f.name.endsWith("_qnn_ctx.onnx") }?.forEach { it.delete() }
+        prefs(ctx, pack).edit().clear().apply()
     }
 
-    fun sizeOnDisk(ctx: Context) = FILES.sumOf { file(ctx, it).length() }
+    fun sizeOnDisk(ctx: Context, pack: Pack = MAIN) = pack.files().sumOf { file(ctx, it).length() }
 
     fun describe(ctx: Context) = buildString {
-        append(if (isReady(ctx)) "ready" else "not ready")
-        FILES.forEach { append(", $it=${file(ctx, it).length() shr 20}MB/${prefs(ctx).getLong("size_$it", -1) shr 20}MB") }
+        for (pack in listOf(MAIN, NPU)) {
+            append("${pack.key}: ${if (isReady(ctx, pack)) "ready" else "not ready"}")
+            pack.files().forEach { append(", $it=${file(ctx, it).length() shr 20}MB/${prefs(ctx, pack).getLong("size_$it", -1) shr 20}MB") }
+            append("; ")
+        }
     }
+}
+
+/** Models compiled ahead of time for this phone's NPU (convert/compile_npu.py, compile-npu.yml). */
+object NpuPack {
+    /** Chip id used in the file names, or null when there's no pre-compiled pack for this SoC. */
+    fun chip(): String? = when {
+        android.os.Build.SOC_MODEL.uppercase().startsWith("SM8750") -> "sm8750"
+        else -> null
+    }
+
+    fun files(): List<String> = chip()?.let { c ->
+        listOf("encoder", "decoder").flatMap { m -> listOf("triposr_${m}_${c}_ctx.onnx", "triposr_${m}_${c}_ctx_qnn.bin") }
+    } ?: emptyList()
+
+    fun encoder(ctx: Context): File? = chip()?.let { ModelStore.file(ctx, "triposr_encoder_${it}_ctx.onnx") }
+    fun decoder(ctx: Context): File? = chip()?.let { ModelStore.file(ctx, "triposr_decoder_${it}_ctx.onnx") }
+    fun isReady(ctx: Context) = ModelStore.isReady(ctx, ModelStore.NPU)
 }
 
 /** Checks the repo's latest GitHub release for a newer APK and installs it. */

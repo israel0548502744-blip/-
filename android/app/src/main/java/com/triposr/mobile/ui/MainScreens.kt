@@ -92,12 +92,12 @@ import kotlinx.coroutines.launch
 
 /** Polls DownloadManager while visible. */
 @Composable
-fun rememberModelStatus(): ModelStore.Status {
+fun rememberModelStatus(pack: com.triposr.mobile.Pack = ModelStore.MAIN): ModelStore.Status {
     val ctx = LocalContext.current
-    var status by remember { mutableStateOf(runCatching { ModelStore.status(ctx) }.getOrDefault(ModelStore.Status.Missing)) }
+    var status by remember { mutableStateOf(runCatching { ModelStore.status(ctx, pack) }.getOrDefault(ModelStore.Status.Missing)) }
     LaunchedEffect(Unit) {
         while (true) {
-            status = runCatching { ModelStore.status(ctx) }.getOrDefault(ModelStore.Status.Missing)
+            status = runCatching { ModelStore.status(ctx, pack) }.getOrDefault(ModelStore.Status.Missing)
             delay(if (status is ModelStore.Status.Downloading) 600 else 2000)
         }
     }
@@ -160,8 +160,9 @@ fun Logo(size: Int = 56) {
 fun HomeScreen() {
     val ctx = LocalContext.current
     val status = rememberModelStatus()
-    LaunchedEffect(status) {
-        if (status is ModelStore.Status.Ready && !Capabilities.probed(ctx)) startProbe(ctx)
+    val npuStatus = rememberModelStatus(ModelStore.NPU)
+    LaunchedEffect(status, npuStatus) {
+        if (status is ModelStore.Status.Ready && npuStatus !is ModelStore.Status.Downloading && !Capabilities.probed(ctx)) startProbe(ctx)
     }
     var i = 0
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -179,6 +180,7 @@ fun HomeScreen() {
         AppState.notice?.let { NoticeCard(it) { AppState.notice = null } }
         UpdateCard()
         if (status !is ModelStore.Status.Ready) ModelCard(status)
+        else NpuPackCard(npuStatus)
 
         GradientButton("צור מודל 3D", Modifier.fillMaxWidth().enter(i++), sparkles = true,
             enabled = status is ModelStore.Status.Ready) { AppState.startNew() }
@@ -591,7 +593,11 @@ fun ProcessingScreen() {
                     GradientText("${(job.overall * 100).toInt()}%", 46.sp, brush = C.Primary)
                     Text(job.status, color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(6.dp))
-                    Chip("רץ על ${job.backend.label}", C.Violet)
+                    val sec = if (LocalAnimations.current) rememberElapsed(job.startedAt) else 0L
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("רץ על ${job.backend.label}", C.Violet)
+                        Chip("%d:%02d".format(sec / 60, sec % 60), C.Sub)
+                    }
                 }
             }
 
@@ -659,4 +665,75 @@ fun BackendPicker(choice: Backend?, onChoice: (Backend?) -> Unit) {
     if (choice != null && results[choice]?.support != Support.OK && results[choice]?.support != Support.UNKNOWN) {
         Text("${choice.short} לא עובד בטלפון הזה, היצירה עלולה להיכשל. מומלץ אוטומטי.", color = C.Amber, fontSize = 12.sp)
     }
+}
+
+/**
+ * Offers the NPU pack (models pre-compiled for this phone's Snapdragon) once the main model is
+ * installed. Hidden on other chips and while the pack isn't published yet.
+ */
+@Composable
+fun NpuPackCard(status: ModelStore.Status, alwaysShow: Boolean = false) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    if (com.triposr.mobile.NpuPack.chip() == null) {
+        if (alwaysShow) Text("אין חבילת NPU לשבב הזה (${android.os.Build.SOC_MODEL}). GPU/CPU עובדים כרגיל.", color = C.Sub, fontSize = 13.sp)
+        return
+    }
+    var size by remember { mutableStateOf<Long?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        size = runCatching { ModelStore.availableSize(ModelStore.NPU) }.getOrNull()
+        checked = true
+    }
+    when (status) {
+        ModelStore.Status.Ready -> if (alwaysShow) Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.CheckCircle, null, tint = C.Green, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("חבילת NPU מותקנת (${ModelStore.sizeOnDisk(ctx, ModelStore.NPU) shr 20} MB)", color = C.Green)
+        }
+        is ModelStore.Status.Downloading -> Section {
+            val pct = status.done.toFloat() / status.total
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("מוריד חבילת NPU", color = C.Text, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                GradientText("${(pct * 100).toInt()}%", 20.sp, brush = C.Primary)
+            }
+            GlowBar(pct, Modifier.fillMaxWidth(), C.Primary)
+            SoftButton("בטל", Modifier.fillMaxWidth()) { ModelStore.cancel(ctx, ModelStore.NPU) }
+        }
+        else -> {
+            val s = size
+            if (s == null) {
+                if (alwaysShow && checked) Text("חבילת NPU לטלפון הזה עוד לא פורסמה.", color = C.Sub, fontSize = 13.sp)
+                return
+            }
+            Section {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconTile(Icons.Rounded.Memory, 44.dp, C.Primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("האצה עם ה-NPU", color = C.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("מודל שהוכן מראש לשבב של הטלפון · ${s shr 20} MB", color = C.Sub, fontSize = 12.sp)
+                    }
+                }
+                if (status is ModelStore.Status.Failed) Text(status.message, color = C.Red, fontSize = 13.sp)
+                GradientButton("הורד חבילת NPU", Modifier.fillMaxWidth(), icon = Icons.Rounded.CloudDownload) {
+                    error = null
+                    scope.launch {
+                        runCatching { ModelStore.startDownload(ctx, ModelStore.NPU) }
+                            .onFailure { CrashLog.error("NPU pack download", it); error = it.message }
+                    }
+                }
+                error?.let { Text(it, color = C.Red, fontSize = 13.sp) }
+            }
+        }
+    }
+}
+
+/** Seconds since [start], ticking every second. */
+@Composable
+fun rememberElapsed(start: Long): Long {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(start) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
+    return (now - start) / 1000
 }

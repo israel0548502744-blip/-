@@ -47,7 +47,6 @@ class TripoEngine(private val context: Context) : AutoCloseable {
             Backend.NPU -> mapOf(
                 "backend_path" to "libQnnHtp.so",
                 "htp_performance_mode" to "burst",
-                "htp_graph_finalization_optimization_mode" to "3",
                 "enable_htp_fp16_precision" to "1",
             )
             Backend.GPU -> mapOf("backend_path" to "libQnnGpu.so")
@@ -74,9 +73,17 @@ class TripoEngine(private val context: Context) : AutoCloseable {
             onAttempt(b)
             val t0 = System.nanoTime()
             try {
-                onStatus(if (b == Backend.NPU) "מכין את המודל ל-NPU (בפעם הראשונה עד כמה דקות)" else "טוען את המודל ל-${b.short}")
-                encoder = createSession(ModelStore.file(context, ENCODER), b, "encoder")
-                decoder = createSession(ModelStore.file(context, DECODER), b, "decoder")
+                onStatus("טוען את המודל ל-${b.label}")
+                if (b == Backend.NPU) {
+                    // Compiling the 1.6 GB encoder for the NPU on the phone takes too long and too much
+                    // memory (the system kills the app), so the NPU only uses the pack compiled in CI.
+                    if (!NpuPack.isReady(context)) throw IllegalStateException("NPU pack not installed")
+                    encoder = npuSession(NpuPack.encoder(context)!!)
+                    decoder = npuSession(NpuPack.decoder(context)!!)
+                } else {
+                    encoder = createSession(ModelStore.file(context, ENCODER), b, "encoder")
+                    decoder = createSession(ModelStore.file(context, DECODER), b, "decoder")
+                }
                 encoderBackend = b
                 backend = chain.first()
                 CrashLog.log("Sessions ready on ${b.label} in %.1fs".format((System.nanoTime() - t0) / 1e9))
@@ -207,27 +214,20 @@ class TripoEngine(private val context: Context) : AutoCloseable {
     private fun createSession(model: File, b: Backend, cacheName: String): OrtSession {
         if (!model.exists()) throw IllegalStateException("המודל לא הורד עדיין (${model.name})")
         if (b == Backend.CPU) return cpuSession(model)
-        // Compiling a large graph for the NPU takes minutes, so the compiled QNN context is cached.
-        // The model size is part of the name, so a new model never reuses an old cache.
-        val ctx = if (b == Backend.NPU) File(context.filesDir, "${cacheName}_${model.length()}_qnn_ctx.onnx") else null
         val opts = OrtSession.SessionOptions()
         opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         opts.addQnn(qnnOptions(b))
-        CrashLog.log("Creating ${b.short} session for ${model.name} (cached=${ctx?.exists() == true})")
-        return try {
-            if (ctx != null && ctx.exists()) {
-                env.createSession(ctx.absolutePath, opts)
-            } else {
-                if (ctx != null) {
-                    opts.addConfigEntry("ep.context_enable", "1")
-                    opts.addConfigEntry("ep.context_file_path", ctx.absolutePath)
-                }
-                env.createSession(model.absolutePath, opts)
-            }
-        } catch (e: Throwable) {
-            ctx?.delete()
-            throw e
-        }
+        CrashLog.log("Creating ${b.short} session for ${model.name} ($cacheName)")
+        return env.createSession(model.absolutePath, opts)
+    }
+
+    /** Loads a pre-compiled QNN context model (its .bin file sits next to it). */
+    private fun npuSession(ctxModel: File): OrtSession {
+        CrashLog.log("Loading NPU context ${ctxModel.name} (${ctxModel.parentFile?.listFiles()?.filter {
+            it.name.startsWith(ctxModel.nameWithoutExtension) }?.sumOf { it.length() }?.shr(20)} MB)")
+        val opts = OrtSession.SessionOptions()
+        opts.addQnn(qnnOptions(Backend.NPU))
+        return env.createSession(ctxModel.absolutePath, opts)
     }
 
     private fun cpuSession(model: File): OrtSession {

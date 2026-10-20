@@ -75,6 +75,9 @@ android {
 dependencies {
     // ONNX Runtime with the Qualcomm QNN execution provider (pulls in com.qualcomm.qti:qnn-runtime).
     implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.29.0")
+    // QNN libraries matching the QAIRT version (2.51) that compiles the NPU pack in CI
+    // (onnxruntime-qnn 2.7.0); a context binary needs a runtime at least as new as its compiler.
+    implementation("com.qualcomm.qti:qnn-runtime:2.51.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

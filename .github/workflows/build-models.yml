@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: ["**"]
-    paths: ["convert/**", ".github/workflows/build-models.yml"]
+    paths: ["convert/export_onnx.py", "convert/requirements.txt", ".github/workflows/build-models.yml"]
 
 permissions:
   contents: write

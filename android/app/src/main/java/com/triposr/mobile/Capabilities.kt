@@ -24,6 +24,7 @@ enum class Support(val label: String) {
     FAILED("לא עובד"),
     CRASHED("גרם לקריסה"),
     UNSUPPORTED("לא נתמך בטלפון"),
+    NEEDS_PACK("צריך חבילת NPU"),
 }
 
 data class BackendResult(val backend: Backend, val support: Support, val ms: Double = 0.0, val detail: String = "")
@@ -38,7 +39,7 @@ data class BackendResult(val backend: Backend, val support: Support, val ms: Dou
  */
 object Capabilities {
     private const val RESULT_FILE = "probe_result.txt"
-    private const val PROBE_TIMEOUT_MS = 150_000L
+    private const val PROBE_TIMEOUT_MS = 300_000L
 
     fun isSnapdragon(): Boolean {
         val soc = "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL} ${Build.HARDWARE} ${Build.BOARD}".lowercase()
@@ -47,8 +48,9 @@ object Capabilities {
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("capabilities", Context.MODE_PRIVATE)
 
-    /** Results are tied to the app build: a new ONNX Runtime / QNN version is tested again. */
-    fun probed(ctx: Context) = prefs(ctx).getInt("build", -1) == BuildConfig.VERSION_CODE
+    /** Results are tied to the app build and to whether the NPU pack is installed. */
+    fun probed(ctx: Context) = prefs(ctx).getInt("build", -1) == BuildConfig.VERSION_CODE &&
+        prefs(ctx).getBoolean("npu_pack", false) == NpuPack.isReady(ctx)
 
     fun results(ctx: Context): Map<Backend, BackendResult> {
         val json = prefs(ctx).getString("results", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
@@ -57,7 +59,9 @@ object Capabilities {
             if (AppState.crashedBefore(b)) return@associateWith BackendResult(b, Support.CRASHED)
             val o = json?.optJSONObject(b.name) ?: return@associateWith BackendResult(b,
                 if (b == Backend.CPU) Support.OK else Support.UNKNOWN)
-            BackendResult(b, Support.valueOf(o.getString("support")), o.optDouble("ms"), o.optString("detail"))
+            val r = BackendResult(b, Support.valueOf(o.getString("support")), o.optDouble("ms"), o.optString("detail"))
+            // The NPU works, but the big encoder can only run on it from the pre-compiled pack.
+            if (b == Backend.NPU && r.support == Support.OK && !NpuPack.isReady(ctx)) r.copy(support = Support.NEEDS_PACK) else r
         }
     }
 
@@ -86,8 +90,11 @@ object Capabilities {
             while (remaining.isNotEmpty()) {
                 onStatus("בודק אילו מעבדים עובדים בטלפון (${remaining.joinToString { it.short }})")
                 val out = File(ctx.filesDir, RESULT_FILE).apply { delete() }
+                val pack = NpuPack.isReady(ctx)
                 ctx.startService(Intent(ctx, ProbeService::class.java)
-                    .putExtra("backends", remaining.map { it.name }.toTypedArray()))
+                    .putExtra("backends", remaining.map { it.name }.toTypedArray())
+                    .putExtra("npu_encoder", if (pack) NpuPack.encoder(ctx)?.absolutePath else null)
+                    .putExtra("npu_decoder", if (pack) NpuPack.decoder(ctx)?.absolutePath else null))
                 val t0 = System.currentTimeMillis()
                 delay(1500)
                 while (System.currentTimeMillis() - t0 < PROBE_TIMEOUT_MS) {
@@ -102,8 +109,9 @@ object Capabilities {
                     when {
                         res != null -> {
                             val parts = res.split(" ", limit = 4)
+                            val enc = lines.firstOrNull { it.startsWith("${b.name}_ENCODER ") }?.substringAfter(" ")
                             found[b] = BackendResult(b, Support.valueOf(parts[1]), parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0,
-                                parts.getOrNull(3) ?: "")
+                                listOfNotNull(parts.getOrNull(3), enc?.let { "encoder $it" }).joinToString(" "))
                         }
                         lines.any { it == "${b.name} START" } -> { crashedOn = b; found[b] = BackendResult(b, Support.CRASHED,
                             detail = "the test process died while testing ${b.name}") }
@@ -120,7 +128,8 @@ object Capabilities {
         found.values.forEach { r ->
             json.put(r.backend.name, JSONObject().put("support", r.support.name).put("ms", r.ms).put("detail", r.detail))
         }
-        prefs(ctx).edit().putString("results", json.toString()).putInt("build", BuildConfig.VERSION_CODE).apply()
+        prefs(ctx).edit().putString("results", json.toString()).putInt("build", BuildConfig.VERSION_CODE)
+            .putBoolean("npu_pack", NpuPack.isReady(ctx)).apply()
         results(ctx)
     }
 
@@ -138,8 +147,10 @@ class ProbeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val names = intent?.getStringArrayExtra("backends") ?: emptyArray()
+        val npuEncoder = intent?.getStringExtra("npu_encoder")
+        val npuDecoder = intent?.getStringExtra("npu_decoder")
         Thread {
-            runCatching { probe(names.map { Backend.valueOf(it) }) }
+            runCatching { probe(names.map { Backend.valueOf(it) }, npuEncoder, npuDecoder) }
                 .onFailure { append("ERROR ${it.message?.replace('\n', ' ')}") }
             append("DONE")
             stopSelf()
@@ -151,7 +162,7 @@ class ProbeService : Service() {
     private val out by lazy { File(filesDir, "probe_result.txt") }
     private fun append(line: String) = out.appendText(line + "\n")
 
-    private fun probe(backends: List<Backend>) {
+    private fun probe(backends: List<Backend>, npuEncoder: String?, npuDecoder: String?) {
         val env = OrtEnvironment.getEnvironment()
         val model = ModelStore.file(this, TripoEngine.DECODER).absolutePath
         val rnd = Random(1)
@@ -177,7 +188,25 @@ class ProbeService : Service() {
             try {
                 val opts = OrtSession.SessionOptions()
                 opts.addQnn(TripoEngine.qnnOptions(b))
-                env.createSession(model, opts).use { s ->
+                // With the NPU pack installed, test the real pre-compiled models: load the big encoder
+                // and run it once (this is what failed on-device before), then compare the decoder.
+                if (b == Backend.NPU && npuEncoder != null) {
+                    val t0 = System.nanoTime()
+                    env.createSession(npuEncoder, opts).use { enc ->
+                        val load = (System.nanoTime() - t0) / 1e9
+                        val img = FloatArray(3 * 512 * 512) { rnd.nextFloat() }
+                        OnnxTensor.createTensor(env, FloatBuffer.wrap(img), longArrayOf(1, 3, 512, 512)).use { t ->
+                            val t1 = System.nanoTime()
+                            enc.run(mapOf("image" to t)).use { r ->
+                                val fb = (r[0] as OnnxTensor).floatBuffer
+                                val out = FloatArray(fb.remaining()).also { fb.get(it) }
+                                if (out.any { it.isNaN() || it.isInfinite() }) throw IllegalStateException("encoder output has NaN/Inf")
+                                append("NPU_ENCODER load=%.1fs run=%.0fms".format(load, (System.nanoTime() - t1) / 1e6))
+                            }
+                        }
+                    }
+                }
+                env.createSession(if (b == Backend.NPU && npuDecoder != null) npuDecoder else model, opts).use { s ->
                     run(s) // warm-up (graph finalization)
                     val t0 = System.nanoTime()
                     val (d, col) = run(s)
