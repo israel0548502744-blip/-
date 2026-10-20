@@ -1,0 +1,59 @@
+name: Compile models for the NPU
+
+# Ahead-of-time compiles the ONNX models into QNN context binaries for the Hexagon NPU, so the
+# phone doesn't have to (on-device compilation of the 1.6 GB encoder runs out of time/memory).
+# Output goes to the models-v1 release as an optional "NPU pack" per chip.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths: ["convert/compile_npu.py", ".github/workflows/compile-npu.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      matrix:
+        include:
+          # Snapdragon 8 Elite (Galaxy S25 series): Hexagon v79, QNN SoC id 69.
+          - chip: sm8750
+            soc: "69"
+            arch: "79"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ONNX Runtime + QNN plugin (QAIRT 2.51, matches the app's qnn-runtime)
+        run: pip install onnxruntime-qnn==2.7.0 onnx
+
+      - name: Download the ONNX models
+        run: |
+          mkdir -p models
+          for f in triposr_encoder.onnx triposr_decoder.onnx; do
+            curl -fsSL -o models/$f https://github.com/${GITHUB_REPOSITORY}/releases/download/models-v1/$f
+          done
+          ls -la models
+
+      - name: Compile decoder
+        run: python convert/compile_npu.py models/triposr_decoder.onnx npu --suffix _${{ matrix.chip }} --soc-model ${{ matrix.soc }} --htp-arch ${{ matrix.arch }}
+
+      - name: Compile encoder
+        run: |
+          free -g
+          /usr/bin/time -v python convert/compile_npu.py models/triposr_encoder.onnx npu --suffix _${{ matrix.chip }} --soc-model ${{ matrix.soc }} --htp-arch ${{ matrix.arch }} 2>&1 | tail -40
+          ls -la npu
+
+      - name: Upload NPU pack to the models release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: models-v1
+          prerelease: true
+          make_latest: false
+          files: npu/*

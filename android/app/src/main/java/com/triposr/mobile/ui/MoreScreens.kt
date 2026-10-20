@@ -242,7 +242,7 @@ private fun RenameDialog(p: Project, onDone: () -> Unit) {
     var name by remember { mutableStateOf(p.name) }
     AlertDialog(
         onDismissRequest = onDone,
-        containerColor = C.CardHighHigh,
+        containerColor = C.CardHigh,
         title = { Text("שם המודל", color = C.Text) },
         text = { OutlinedTextField(name, { name = it }, singleLine = true, colors = fieldColors()) },
         confirmButton = { TextButton({ if (name.isNotBlank()) AppState.rename(p, name.trim()); onDone() }) { Text("שמור", color = C.Violet) } },
@@ -296,7 +296,7 @@ fun ProjectsScreen() {
     }
     toDelete?.let { p ->
         AlertDialog(
-            onDismissRequest = { toDelete = null }, containerColor = C.CardHighHigh,
+            onDismissRequest = { toDelete = null }, containerColor = C.CardHigh,
             title = { Text("למחוק את \"${p.name}\"?", color = C.Text) },
             confirmButton = { TextButton({ AppState.delete(p); toDelete = null }) { Text("מחק", color = C.Red) } },
             dismissButton = { TextButton({ toDelete = null }) { Text("ביטול", color = C.Sub) } },
@@ -389,7 +389,7 @@ fun SettingsScreen() {
         }
     }
     if (confirmDelete) AlertDialog(
-        onDismissRequest = { confirmDelete = false }, containerColor = C.CardHighHigh,
+        onDismissRequest = { confirmDelete = false }, containerColor = C.CardHigh,
         title = { Text("למחוק את המודל?", color = C.Text) },
         text = { Text("תצטרך להוריד אותו שוב (1.7GB) כדי ליצור מודלים חדשים. הפרויקטים השמורים נשארים.", color = C.Sub) },
         confirmButton = { TextButton({ AppState.resetEngine(); ModelStore.delete(ctx); Capabilities.reset(ctx); confirmDelete = false }) { Text("מחק", color = C.Red) } },
