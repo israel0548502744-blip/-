@@ -1,10 +1,12 @@
 name: Build TripoSR Android APK
 
+# Builds the small app (~30-40 MB). The 1.7 GB model is NOT in the APK: it is published
+# once by build-models.yml and downloaded from inside the app.
 on:
   workflow_dispatch:
   push:
     branches: ["**"]
-    paths: ["android/**", "convert/**", ".github/workflows/build-apk.yml"]
+    paths: ["android/**", ".github/workflows/build-apk.yml"]
 
 permissions:
   contents: write
@@ -12,33 +14,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install export dependencies
-        run: |
-          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install -r convert/requirements.txt
-
-      - name: Cache TripoSR weights
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: hf-stabilityai-TripoSR-v1
-
-      - name: Export TripoSR to ONNX
-        run: |
-          python convert/export_onnx.py --model stabilityai/TripoSR --out android/app/src/main/assets --verify
-          ls -la android/app/src/main/assets
-
-      - name: Download background-removal model (U2-Net-p, from rembg)
+      - name: Download background-removal model (U2-Net-p, 4.6 MB, from rembg)
         run: curl -fsSL -o android/app/src/main/assets/u2netp.onnx https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
 
       - uses: actions/setup-java@v4
@@ -60,15 +40,16 @@ jobs:
         with:
           name: TripoSR-apk
           path: TripoSR.apk
-          compression-level: 0
 
-      - name: Publish as a GitHub release (easy download from the phone)
+      - name: Publish as the latest release (the app's updater reads it)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ github.run_number }}
           name: TripoSR Android build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
+          make_latest: true
           files: TripoSR.apk
           body: |
             Install TripoSR.apk on the phone (allow installing from unknown sources).
+            The AI model (~1.7 GB) is downloaded once from inside the app.
             Built from ${{ github.ref_name }} @ ${{ github.sha }}.

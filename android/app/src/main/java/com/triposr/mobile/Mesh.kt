@@ -3,7 +3,6 @@ package com.triposr.mobile
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.sqrt
 
 /** Triangle mesh with per-vertex normals and colors (all flat arrays, xyz / rgb interleaved per vertex). */
 class Mesh(
@@ -176,23 +175,7 @@ object SurfaceNets {
 
         val positions = pos.toArray()
         val indices = idx.toArray()
-        return Mesh(positions, vertexNormals(positions, indices), FloatArray(positions.size) { 0.7f }, indices)
-    }
-
-    private fun vertexNormals(p: FloatArray, idx: IntArray): FloatArray {
-        val n = FloatArray(p.size)
-        for (t in 0 until idx.size / 3) {
-            val a = idx[t * 3] * 3; val b = idx[t * 3 + 1] * 3; val c = idx[t * 3 + 2] * 3
-            val ux = p[b] - p[a]; val uy = p[b + 1] - p[a + 1]; val uz = p[b + 2] - p[a + 2]
-            val vx = p[c] - p[a]; val vy = p[c + 1] - p[a + 1]; val vz = p[c + 2] - p[a + 2]
-            val nx = uy * vz - uz * vy; val ny = uz * vx - ux * vz; val nz = ux * vy - uy * vx
-            for (o in intArrayOf(a, b, c)) { n[o] += nx; n[o + 1] += ny; n[o + 2] += nz }
-        }
-        for (v in 0 until n.size / 3) {
-            val l = sqrt(n[v * 3] * n[v * 3] + n[v * 3 + 1] * n[v * 3 + 1] + n[v * 3 + 2] * n[v * 3 + 2])
-            if (l > 0f) { n[v * 3] /= l; n[v * 3 + 1] /= l; n[v * 3 + 2] /= l }
-        }
-        return n
+        return Mesh(positions, MeshTools.normals(positions, indices), FloatArray(positions.size) { 0.7f }, indices)
     }
 }
 

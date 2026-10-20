@@ -1,0 +1,213 @@
+package com.triposr.mobile
+
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+
+private const val REPO = "israel0548502744-blip/-"
+
+private suspend fun githubJson(path: String): JSONObject = withContext(Dispatchers.IO) {
+    val conn = URL("https://api.github.com/repos/$REPO/$path").openConnection() as HttpURLConnection
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.connectTimeout = 15000
+    conn.readTimeout = 15000
+    try {
+        if (conn.responseCode != 200) throw IllegalStateException("GitHub API ${conn.responseCode} for $path")
+        JSONObject(conn.inputStream.bufferedReader().readText())
+    } finally {
+        conn.disconnect()
+    }
+}
+
+data class ReleaseAsset(val name: String, val size: Long, val url: String)
+
+private fun JSONObject.assets(): List<ReleaseAsset> {
+    val arr = getJSONArray("assets")
+    return (0 until arr.length()).map { i ->
+        val a = arr.getJSONObject(i)
+        ReleaseAsset(a.getString("name"), a.getLong("size"), a.getString("browser_download_url"))
+    }
+}
+
+/** User preferences that persist between runs. */
+object Settings {
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    fun backend(ctx: Context) = Backend.entries[prefs(ctx).getInt("backend", Backend.NPU.ordinal)]
+    fun setBackend(ctx: Context, b: Backend) = prefs(ctx).edit().putInt("backend", b.ordinal).apply()
+    fun quality(ctx: Context) = Quality.entries[prefs(ctx).getInt("quality", Quality.MEDIUM.ordinal)]
+    fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putInt("quality", q.ordinal).apply()
+    fun removeBackground(ctx: Context) = prefs(ctx).getBoolean("remove_bg", true)
+    fun setRemoveBackground(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("remove_bg", v).apply()
+    fun smooth(ctx: Context) = prefs(ctx).getBoolean("smooth", true)
+    fun setSmooth(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("smooth", v).apply()
+
+    fun describe(ctx: Context) =
+        "backend=${backend(ctx)}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, smooth=${smooth(ctx)}"
+}
+
+enum class Quality(val label: String, val resolution: Int, val hint: String) {
+    LOW("נמוכה", 128, "מהיר, כמה שניות"),
+    MEDIUM("בינונית", 192, "מאוזן"),
+    HIGH("גבוהה", 256, "הכי מפורט, איטי יותר"),
+}
+
+/**
+ * The TripoSR ONNX models (~1.7 GB) are not inside the APK. They are published once as a
+ * GitHub release and downloaded from inside the app with Android's DownloadManager, which keeps
+ * going in the background, resumes after network drops and shows a notification.
+ */
+object ModelStore {
+    const val RELEASE_TAG = "models-v1"
+    val FILES = listOf(TripoEngine.ENCODER, TripoEngine.DECODER)
+
+    sealed interface Status {
+        data object Missing : Status
+        data class Downloading(val done: Long, val total: Long) : Status
+        data object Ready : Status
+        data class Failed(val message: String) : Status
+    }
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("models", Context.MODE_PRIVATE)
+    private fun dir(ctx: Context) = ctx.getExternalFilesDir("models")!!
+    fun file(ctx: Context, name: String) = File(dir(ctx), name)
+
+    fun isReady(ctx: Context) = FILES.all { name ->
+        val f = file(ctx, name)
+        f.exists() && f.length() > 0 && f.length() == prefs(ctx).getLong("size_$name", -1)
+    }
+
+    suspend fun startDownload(ctx: Context) {
+        val assets = githubJson("releases/tags/$RELEASE_TAG").assets().associateBy { it.name }
+        val dm = ctx.getSystemService(DownloadManager::class.java)
+        cancel(ctx)
+        val edit = prefs(ctx).edit()
+        for (name in FILES) {
+            val asset = assets[name] ?: throw IllegalStateException("$name missing from release $RELEASE_TAG")
+            file(ctx, name).delete()
+            val req = DownloadManager.Request(Uri.parse(asset.url))
+                .setTitle("TripoSR — מודל תלת־ממד")
+                .setDescription(name)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(ctx, "models", name)
+            edit.putLong("size_$name", asset.size).putLong("id_$name", dm.enqueue(req))
+        }
+        edit.apply()
+        CrashLog.log("Model download started: ${assets.values.sumOf { it.size } shr 20} MB")
+    }
+
+    fun status(ctx: Context): Status {
+        if (isReady(ctx)) return Status.Ready
+        val dm = ctx.getSystemService(DownloadManager::class.java)
+        val ids = FILES.map { prefs(ctx).getLong("id_$it", -1) }.filter { it >= 0 }
+        if (ids.isEmpty()) return Status.Missing
+        var done = 0L
+        var total = FILES.sumOf { prefs(ctx).getLong("size_$it", 0) }
+        var running = false
+        dm.query(DownloadManager.Query().setFilterById(*ids.toLongArray())).use { c ->
+            if (c.count == 0) return Status.Missing
+            while (c.moveToNext()) {
+                val st = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                done += c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                when (st) {
+                    DownloadManager.STATUS_FAILED -> {
+                        val reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                        return Status.Failed("ההורדה נכשלה (קוד $reason)")
+                    }
+                    DownloadManager.STATUS_SUCCESSFUL -> {}
+                    else -> running = true
+                }
+            }
+        }
+        if (total <= 0) total = 1
+        return if (running) Status.Downloading(done, total)
+        else if (isReady(ctx)) Status.Ready
+        else Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
+    }
+
+    fun cancel(ctx: Context) {
+        val dm = ctx.getSystemService(DownloadManager::class.java)
+        val edit = prefs(ctx).edit()
+        for (name in FILES) {
+            val id = prefs(ctx).getLong("id_$name", -1)
+            if (id >= 0 && !isReady(ctx)) dm.remove(id)
+            edit.remove("id_$name")
+        }
+        edit.apply()
+    }
+
+    fun delete(ctx: Context) {
+        cancel(ctx)
+        FILES.forEach { file(ctx, it).delete() }
+        ctx.filesDir.listFiles { f -> f.name.endsWith("_qnn_ctx.onnx") }?.forEach { it.delete() }
+        prefs(ctx).edit().clear().apply()
+    }
+
+    fun sizeOnDisk(ctx: Context) = FILES.sumOf { file(ctx, it).length() }
+
+    fun describe(ctx: Context) = buildString {
+        append(if (isReady(ctx)) "ready" else "not ready")
+        FILES.forEach { append(", $it=${file(ctx, it).length() shr 20}MB/${prefs(ctx).getLong("size_$it", -1) shr 20}MB") }
+    }
+}
+
+/** Checks the repo's latest GitHub release for a newer APK and installs it. */
+object Updater {
+    data class Update(val build: Int, val sizeMb: Long, val url: String, val notes: String)
+
+    suspend fun check(): Update? {
+        val rel = githubJson("releases/latest")
+        val build = rel.getString("tag_name").removePrefix("apk-").toIntOrNull() ?: return null
+        if (build <= BuildConfig.VERSION_CODE) return null
+        val apk = rel.assets().firstOrNull { it.name.endsWith(".apk") } ?: return null
+        return Update(build, apk.size shr 20, apk.url, rel.optString("body"))
+    }
+
+    private fun apkFile(ctx: Context, u: Update) = File(ctx.getExternalFilesDir("updates"), "TripoSR-${u.build}.apk")
+
+    fun download(ctx: Context, u: Update): Long {
+        ctx.getExternalFilesDir("updates")?.listFiles()?.forEach { it.delete() }
+        val req = DownloadManager.Request(Uri.parse(u.url))
+            .setTitle("TripoSR — עדכון ${u.build}")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            .setDestinationInExternalFilesDir(ctx, "updates", apkFile(ctx, u).name)
+        return ctx.getSystemService(DownloadManager::class.java).enqueue(req)
+    }
+
+    /** Returns 0..1 while downloading, 1 when done, -1 on failure. */
+    fun progress(ctx: Context, id: Long): Float {
+        val dm = ctx.getSystemService(DownloadManager::class.java)
+        dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+            if (!c.moveToFirst()) return -1f
+            return when (c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
+                DownloadManager.STATUS_SUCCESSFUL -> 1f
+                DownloadManager.STATUS_FAILED -> -1f
+                else -> {
+                    val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    val done = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    if (total > 0) (done.toFloat() / total).coerceAtMost(0.99f) else 0f
+                }
+            }
+        }
+    }
+
+    fun install(ctx: Context, u: Update) {
+        if (!ctx.packageManager.canRequestPackageInstalls()) {
+            ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
+        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", apkFile(ctx, u))
+        ctx.startActivity(Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}

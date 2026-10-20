@@ -1,0 +1,57 @@
+name: Export TripoSR models
+
+# Converts TripoSR to ONNX and publishes the files to the "models-v1" release, which the app
+# downloads from. Only needs to run again when the conversion changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths: ["convert/**", ".github/workflows/build-models.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install export dependencies
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r convert/requirements.txt
+
+      - name: Cache TripoSR weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-stabilityai-TripoSR-v1
+
+      - name: Export TripoSR to ONNX
+        run: |
+          mkdir -p models
+          python convert/export_onnx.py --model stabilityai/TripoSR --out models --verify
+          ls -la models
+
+      - name: Publish models release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: models-v1
+          name: TripoSR ONNX models (v1)
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          files: |
+            models/triposr_encoder.onnx
+            models/triposr_decoder.onnx
+          body: |
+            TripoSR converted to ONNX for the Android app. Downloaded from inside the app — no need to download manually.
+            Built from ${{ github.ref_name }} @ ${{ github.sha }}.
