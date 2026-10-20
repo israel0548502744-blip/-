@@ -35,7 +35,7 @@ import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.ThreeDRotation
+import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -141,7 +141,7 @@ fun ResultScreen() {
                     ViewToggle(Icons.Rounded.Palette, "צבע", colors) { colors = !colors }
                     ViewToggle(Icons.Rounded.Lightbulb, "תאורה", light) { light = !light }
                     ViewToggle(Icons.Rounded.GridOn, "רצפה", grid) { grid = !grid }
-                    ViewToggle(Icons.Rounded.ThreeDRotation, "סיבוב", rotate) { rotate = !rotate }
+                    ViewToggle(Icons.Rounded.Autorenew, "סיבוב", rotate) { rotate = !rotate }
                     ViewToggle(Icons.Rounded.CenterFocusStrong, "איפוס", false) { view?.resetView() }
                 }
             }
