@@ -96,17 +96,18 @@ object AppState {
 
     fun init(context: Context) {
         app = context.applicationContext
-        // If the previous run died while a backend was running (native crash inside QNN, or a
-        // kill for memory), don't pick that backend by default again.
+        // The previous run died while a backend was in use. Only count it against the backend when
+        // Android reports an abnormal exit (crash / native crash / ANR / low memory), not a force-stop.
         prefs().getString("active_backend", null)?.let { name ->
+            prefs().edit().remove("active_backend").commit()
+            if (!CrashLog.previousSessionCrashed) return@let
             val crashed = Backend.valueOf(name)
-            prefs().edit().remove("active_backend").putBoolean("crashed_$name", true).commit()
+            prefs().edit().putBoolean("crashed_$name", true).commit()
             CrashLog.log("Previous run died while using $name")
-            if (Settings.backend(app) == crashed && crashed != Backend.CPU) {
-                val next = Backend.entries[crashed.ordinal + 1]
-                Settings.setBackend(app, next)
+            if (crashed != Backend.CPU) {
+                if (Settings.backendChoice(app) == crashed) Settings.setBackendChoice(app, null)
                 notice = "בהפעלה הקודמת האפליקציה נסגרה בזמן עבודה על ${crashed.label}. " +
-                    "עברתי ל-${next.label}. אפשר לנסות שוב בהגדרות, ודוח הקריסה זמין להעתקה."
+                    "מעכשיו המצב האוטומטי ידלג עליו. אפשר לאפס בהגדרות, ודוח הקריסה זמין להעתקה."
             }
         }
         scope.launch { loadProjects() }
@@ -137,28 +138,34 @@ object AppState {
         framed = null
     }
 
-    fun start(backend: Backend, quality: Quality, removeBackground: Boolean, smooth: Boolean) {
+    fun start(choice: Backend?, quality: Quality, removeBackground: Boolean, smooth: Boolean) {
         val image = input ?: return
         if (runningJob?.isActive == true) return
         cancelRequested = false
-        job = JobState(backend = backend, status = "מתחיל...")
+        job = JobState(backend = choice ?: Capabilities.best(app), status = "מתחיל...")
         navigate(Screen.Processing)
         ProcessingService.start(app)
-        CrashLog.log("Job start: backend=$backend quality=$quality removeBg=$removeBackground smooth=$smooth " +
+        CrashLog.log("Job start: backend=${choice ?: "AUTO"} quality=$quality removeBg=$removeBackground smooth=$smooth " +
             "image=${image.width}x${image.height}")
 
         runningJob = scope.launch {
-            // Written synchronously: if the process dies inside native code we find it on next launch.
-            prefs().edit().putString("active_backend", backend.name).commit()
             try {
                 fun stage(s: Stage, p: Float, status: String = s.label) {
                     job = job?.copy(stage = s, stageProgress = p, status = status)
                 }
                 stage(Stage.LOAD, 0f)
                 if (!ModelStore.isReady(app)) throw IllegalStateException("צריך להוריד את המודל קודם (מסך הבית)")
+                if (choice == null && !Capabilities.probed(app)) {
+                    Capabilities.probe(app) { stage(Stage.LOAD, 0.2f, it) }
+                }
+                val chain = Capabilities.chain(app, choice)
+                CrashLog.log("Backend chain: $chain (${Capabilities.describe(app)})")
                 val eng = engine ?: TripoEngine(app).also { engine = it }
-                eng.load(backend) { stage(Stage.LOAD, 0.5f, it) }
-                job = job?.copy(backend = eng.encoderBackend)
+                eng.load(chain, onStatus = { stage(Stage.LOAD, 0.5f, it) }, onAttempt = { b ->
+                    // Written synchronously: if the process dies inside native code we find it on next launch.
+                    prefs().edit().putString("active_backend", b.name).commit()
+                    job = job?.copy(backend = b)
+                })
 
                 stage(Stage.SEGMENT, 0f)
                 val cut = if (removeBackground) Preprocess.removeBackground(image, eng.segmenter())
@@ -180,10 +187,7 @@ object AppState {
                     mesh = out.mesh
                     project = p
                     job = job?.copy(done = true, stageProgress = 1f, status = "המודל מוכן!")
-                    if (screen == Screen.Processing) {
-                        backStack.removeAt(backStack.lastIndex)
-                        navigate(Screen.Result)
-                    }
+                    if (screen == Screen.Processing) showResult()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 CrashLog.log("Job cancelled")
@@ -199,6 +203,21 @@ object AppState {
                 ProcessingService.finished(app)
             }
         }
+    }
+
+    /** Opens the finished job's model (from the processing screen, the home card or the notification). */
+    fun showResult() {
+        if (mesh == null) return
+        if (screen == Screen.Processing) backStack.removeAt(backStack.lastIndex)
+        navigate(Screen.Result)
+        if (job?.done == true) job = null
+    }
+
+    /** Closes the model sessions, e.g. before the model files are deleted. */
+    fun resetEngine() {
+        if (isRunning) return
+        engine?.close()
+        engine = null
     }
 
     fun cancel() {

@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
             }
             CreateWidget.ACTION_CREATE -> { AppState.navigate(Screen.Create); pendingPick = AppState.input == null }
             CreateWidget.ACTION_PROJECTS -> AppState.navigateRoot(Screen.Projects)
+            ProcessingService.ACTION_RESULT -> AppState.showResult()
         }
     }
 

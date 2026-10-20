@@ -42,15 +42,17 @@ class ProcessingService : Service() {
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentTitle("TripoSR 3D")
                     .setContentText(text)
-                    .setContentIntent(openApp(ctx))
+                    .setContentIntent(openApp(ctx, if (job.done) ACTION_RESULT else null))
                     .setAutoCancel(true)
                     .build())
             }
             ctx.stopService(Intent(ctx, ProcessingService::class.java))
         }
 
-        private fun openApp(ctx: Context) = PendingIntent.getActivity(ctx, 0,
-            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        const val ACTION_RESULT = "com.triposr.mobile.RESULT"
+
+        private fun openApp(ctx: Context, action: String? = null) = PendingIntent.getActivity(ctx, if (action == null) 0 else 1,
+            Intent(ctx, MainActivity::class.java).setAction(action).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         private fun ensureChannels(ctx: Context) {

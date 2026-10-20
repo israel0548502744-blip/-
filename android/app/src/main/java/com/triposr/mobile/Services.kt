@@ -41,8 +41,10 @@ private fun JSONObject.assets(): List<ReleaseAsset> {
 object Settings {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    fun backend(ctx: Context) = Backend.entries[prefs(ctx).getInt("backend", Backend.NPU.ordinal)]
-    fun setBackend(ctx: Context, b: Backend) = prefs(ctx).edit().putInt("backend", b.ordinal).apply()
+    /** Processor chosen by the user; null means automatic (best backend that passed the device test). */
+    fun backendChoice(ctx: Context): Backend? = prefs(ctx).getString("backend_choice", null)
+        ?.let { runCatching { Backend.valueOf(it) }.getOrNull() }
+    fun setBackendChoice(ctx: Context, b: Backend?) = prefs(ctx).edit().putString("backend_choice", b?.name).apply()
     fun quality(ctx: Context) = Quality.entries[prefs(ctx).getInt("quality", Quality.MEDIUM.ordinal)]
     fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putInt("quality", q.ordinal).apply()
     fun removeBackground(ctx: Context) = prefs(ctx).getBoolean("remove_bg", true)
@@ -51,7 +53,7 @@ object Settings {
     fun setSmooth(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("smooth", v).apply()
 
     fun describe(ctx: Context) =
-        "backend=${backend(ctx)}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, smooth=${smooth(ctx)}"
+        "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, smooth=${smooth(ctx)}"
 }
 
 enum class Quality(val label: String, val resolution: Int, val hint: String) {
@@ -80,7 +82,13 @@ object ModelStore {
     private fun dir(ctx: Context) = ctx.getExternalFilesDir("models")!!
     fun file(ctx: Context, name: String) = File(dir(ctx), name)
 
-    fun isReady(ctx: Context) = FILES.all { name ->
+    /**
+     * Ready only after DownloadManager reported success. File size alone is not enough:
+     * DownloadManager pre-allocates the full file size before the download finishes.
+     */
+    fun isReady(ctx: Context) = prefs(ctx).getBoolean("complete", false) && sizesMatch(ctx)
+
+    private fun sizesMatch(ctx: Context) = FILES.all { name ->
         val f = file(ctx, name)
         f.exists() && f.length() > 0 && f.length() == prefs(ctx).getLong("size_$name", -1)
     }
@@ -100,7 +108,7 @@ object ModelStore {
                 .setDestinationInExternalFilesDir(ctx, "models", name)
             edit.putLong("size_$name", asset.size).putLong("id_$name", dm.enqueue(req))
         }
-        edit.apply()
+        edit.putBoolean("complete", false).apply()
         CrashLog.log("Model download started: ${assets.values.sumOf { it.size } shr 20} MB")
     }
 
@@ -112,8 +120,10 @@ object ModelStore {
         var done = 0L
         var total = FILES.sumOf { prefs(ctx).getLong("size_$it", 0) }
         var running = false
+        var succeeded = 0
         dm.query(DownloadManager.Query().setFilterById(*ids.toLongArray())).use { c ->
             if (c.count == 0) return Status.Missing
+            if (c.count < FILES.size) return Status.Failed("ההורדה הופסקה, נסה שוב")
             while (c.moveToNext()) {
                 val st = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 done += c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
@@ -122,15 +132,17 @@ object ModelStore {
                         val reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
                         return Status.Failed("ההורדה נכשלה (קוד $reason)")
                     }
-                    DownloadManager.STATUS_SUCCESSFUL -> {}
+                    DownloadManager.STATUS_SUCCESSFUL -> succeeded++
                     else -> running = true
                 }
             }
         }
         if (total <= 0) total = 1
-        return if (running) Status.Downloading(done, total)
-        else if (isReady(ctx)) Status.Ready
-        else Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
+        if (running || succeeded < FILES.size) return Status.Downloading(done, total)
+        if (!sizesMatch(ctx)) return Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
+        prefs(ctx).edit().putBoolean("complete", true).apply()
+        CrashLog.log("Model download complete")
+        return Status.Ready
     }
 
     fun cancel(ctx: Context) {
@@ -138,6 +150,7 @@ object ModelStore {
         val edit = prefs(ctx).edit()
         for (name in FILES) {
             val id = prefs(ctx).getLong("id_$name", -1)
+            // remove() also deletes the file, so only for unfinished downloads.
             if (id >= 0 && !isReady(ctx)) dm.remove(id)
             edit.remove("id_$name")
         }

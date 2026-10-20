@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -48,6 +49,8 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -55,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,6 +78,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.triposr.mobile.AppState
 import com.triposr.mobile.Backend
+import com.triposr.mobile.Capabilities
+import com.triposr.mobile.Support
 import com.triposr.mobile.CrashLog
 import com.triposr.mobile.ModelStore
 import com.triposr.mobile.Project
@@ -164,6 +170,21 @@ fun HomeScreen() {
                     color = C.Violet, trackColor = C.Stroke)
                 Text(job.status, color = C.Sub, fontSize = 13.sp)
             }
+        }
+
+        if (AppState.job?.done == true && AppState.mesh != null) {
+            Section {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = C.Green)
+                    Spacer(Modifier.width(8.dp))
+                    Text("המודל החדש מוכן!", color = C.Text, fontWeight = FontWeight.Bold)
+                }
+                GradientButton("צפה במודל", Modifier.fillMaxWidth(), icon = Icons.Rounded.ViewInAr) { AppState.showResult() }
+            }
+        }
+        if (ProbeUi.running) Text(ProbeUi.status, color = C.Violet, fontSize = 13.sp)
+        LaunchedEffect(status) {
+            if (status is ModelStore.Status.Ready && !Capabilities.probed(ctx)) startProbe(ctx)
         }
 
         GradientButton("צור מודל חדש", Modifier.fillMaxWidth(), icon = Icons.Rounded.AutoAwesome) {
@@ -336,10 +357,11 @@ fun ModelCard(status: ModelStore.Status, compact: Boolean = true) {
 fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Unit) {
     val ctx = LocalContext.current
     val status = rememberModelStatus()
-    var backend by remember { mutableStateOf(Settings.backend(ctx)) }
+    var backend by remember { mutableStateOf(Settings.backendChoice(ctx)) }
     var quality by remember { mutableStateOf(Settings.quality(ctx)) }
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
+    var sourceMenu by remember { mutableStateOf(false) }
     val image = AppState.input
 
     Column(Modifier.fillMaxSize()) {
@@ -350,7 +372,7 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 Box(
                     Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)).background(C.Bg)
                         .border(1.5.dp, if (image == null) C.Purple.copy(alpha = 0.5f) else C.Stroke, RoundedCornerShape(16.dp))
-                        .clickable(onClick = onGallery),
+                        .clickable { sourceMenu = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     if (image != null) {
@@ -367,10 +389,17 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 }
                 if (image != null) Text("התמונה נטענה בהצלחה", color = C.Green, fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SoftButton("גלריה", Modifier.weight(1f), Icons.Rounded.PhotoLibrary, onClick = onGallery)
-                    SoftButton("מצלמה", Modifier.weight(1f), Icons.Rounded.PhotoCamera, onClick = onCamera)
-                    SoftButton("קבצים", Modifier.weight(1f), Icons.Rounded.FolderOpen, onClick = onFiles)
+                Box {
+                    SoftButton(if (image == null) "העלה תמונה" else "החלף תמונה", Modifier.fillMaxWidth(),
+                        Icons.Rounded.AddPhotoAlternate) { sourceMenu = true }
+                    DropdownMenu(sourceMenu, { sourceMenu = false }, containerColor = C.CardHigh) {
+                        DropdownMenuItem({ Text("גלריה", color = C.Text) }, { sourceMenu = false; onGallery() },
+                            leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, null, tint = C.Violet) })
+                        DropdownMenuItem({ Text("מצלמה", color = C.Text) }, { sourceMenu = false; onCamera() },
+                            leadingIcon = { Icon(Icons.Rounded.PhotoCamera, null, tint = C.Violet) })
+                        DropdownMenuItem({ Text("קבצים", color = C.Text) }, { sourceMenu = false; onFiles() },
+                            leadingIcon = { Icon(Icons.Rounded.FolderOpen, null, tint = C.Violet) })
+                    }
                 }
             }
 
@@ -385,15 +414,8 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 }
             }
 
-            Section(title = "מעבד (Hardware)") {
-                Segmented(Backend.entries.toList(), backend, { it.short }, { backend = it; Settings.setBackend(ctx, it) })
-                val hint = when (backend) {
-                    Backend.NPU -> "הכי מהיר — ניסיוני, בפעם הראשונה הכנה של כמה דקות"
-                    Backend.GPU -> "מומלץ — עובד מצוין על S25"
-                    Backend.CPU -> "הכי יציב, איטי יותר"
-                }
-                Text(hint, color = C.Sub, fontSize = 12.sp)
-                if (AppState.crashedBefore(backend)) Chip("${backend.short} נסגר בפעם הקודמת", C.Orange)
+            Section(title = "מעבד") {
+                BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
             }
 
             Section(title = "רמת פירוט") {
@@ -460,7 +482,7 @@ fun ProcessingScreen() {
                     if (job.backend != Backend.CPU) {
                         val next = Backend.entries[job.backend.ordinal + 1]
                         SoftButton("נסה שוב עם ${next.short}", Modifier.fillMaxWidth()) {
-                            Settings.setBackend(ctx, next)
+                            Settings.setBackendChoice(ctx, next)
                             AppState.back()
                             AppState.start(next, Settings.quality(ctx), Settings.removeBackground(ctx), Settings.smooth(ctx))
                         }
@@ -494,5 +516,51 @@ fun ProcessingScreen() {
             if (job.error == null) SoftButton("ביטול", Modifier.fillMaxWidth()) { AppState.cancel() }
             else SoftButton("חזרה", Modifier.fillMaxWidth()) { AppState.job = null; AppState.back() }
         }
+    }
+}
+
+object ProbeUi {
+    var running by mutableStateOf(false)
+    var status by mutableStateOf("")
+    var tick by mutableIntStateOf(0)
+}
+
+/** Runs the device test once in the background (after the model is downloaded). */
+fun startProbe(ctx: android.content.Context) {
+    if (ProbeUi.running || AppState.isRunning || !com.triposr.mobile.ModelStore.isReady(ctx)) return
+    ProbeUi.running = true
+    AppState.scope.launch {
+        runCatching { Capabilities.probe(ctx) { ProbeUi.status = it } }
+            .onFailure { CrashLog.error("device test", it) }
+        ProbeUi.running = false
+        ProbeUi.tick++
+    }
+}
+
+@Composable
+fun BackendPicker(choice: Backend?, onChoice: (Backend?) -> Unit) {
+    val ctx = LocalContext.current
+    val results = remember(ProbeUi.tick, ProbeUi.running) { Capabilities.results(ctx) }
+    val options = listOf<Backend?>(null) + Backend.entries
+    Segmented(options, choice, { it?.short ?: "אוטומטי" }, onChoice,
+        disabled = { it != null && results[it]?.support in listOf(Support.UNSUPPORTED, Support.FAILED, Support.CRASHED) })
+    if (choice == null) {
+        val best = Capabilities.best(ctx)
+        Text(if (Capabilities.probed(ctx)) "ייבחר אוטומטית: ${best.label} — המהיר ביותר שעבד בבדיקה"
+            else "בפעם הראשונה האפליקציה תבדוק אילו מעבדים עובדים בטלפון ותבחר את המהיר", color = C.Sub, fontSize = 12.sp)
+    }
+    if (ProbeUi.running) Text(ProbeUi.status.ifEmpty { "בודק את המעבדים…" }, color = C.Violet, fontSize = 12.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (b in Backend.entries) {
+            val r = results[b] ?: continue
+            Chip("${b.short}: ${r.support.label}", when (r.support) {
+                Support.OK -> C.Green
+                Support.UNKNOWN -> C.Sub
+                else -> C.Orange
+            })
+        }
+    }
+    if (choice != null && results[choice]?.support != Support.OK && results[choice]?.support != Support.UNKNOWN) {
+        Text("${choice.short} לא עובד בטלפון הזה, ייתכן שהיצירה תיכשל. מומלץ אוטומטי.", color = C.Orange, fontSize = 12.sp)
     }
 }

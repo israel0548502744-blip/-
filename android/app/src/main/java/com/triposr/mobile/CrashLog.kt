@@ -30,6 +30,9 @@ object CrashLog {
     /** Report about how the previous session ended, if it ended badly. Null when nothing to show. */
     @Volatile var pendingReport: String? = null; private set
 
+    /** True when the previous session of the main process ended abnormally (this launch only). */
+    @Volatile var previousSessionCrashed = false; private set
+
     /** Last error caught while the app kept running (shown on the error screen). */
     @Volatile var lastError: String? = null; private set
 
@@ -42,6 +45,9 @@ object CrashLog {
 
         val javaCrash = File(dir, "crash.txt").takeIf { it.exists() }?.readText()
         val exit = previousExit()
+        val flag = File(dir, "crashed.flag")
+        previousSessionCrashed = flag.exists() || exit != null
+        flag.delete()
         pendingReport = when {
             javaCrash != null -> javaCrash
             exit != null -> buildReport("Previous session ended: $exit", null,
@@ -54,6 +60,7 @@ object CrashLog {
             runCatching {
                 log("CRASH on thread ${thread.name}: $e")
                 File(dir, "crash.txt").writeText(buildReport("Crash (uncaught exception)", e, lines.toList()))
+                File(dir, "crashed.flag").createNewFile()
             }
             previous?.uncaughtException(thread, e)
         }
@@ -116,8 +123,10 @@ object CrashLog {
 
     private fun previousExit(): String? {
         val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val info = runCatching { am.getHistoricalProcessExitReasons(app.packageName, 0, 1).firstOrNull() }
-            .getOrNull() ?: return null
+        // Only the main process; the device test runs in ":probe" and may crash on purpose.
+        val info = runCatching {
+            am.getHistoricalProcessExitReasons(app.packageName, 0, 10).firstOrNull { it.processName == app.packageName }
+        }.getOrNull() ?: return null
         val prefs = app.getSharedPreferences("crashlog", Context.MODE_PRIVATE)
         if (prefs.getLong("seen_exit", 0) >= info.timestamp) return null
         prefs.edit().putLong("seen_exit", info.timestamp).apply()
@@ -148,6 +157,8 @@ object CrashLog {
 class TripoApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // The capability test runs in its own process and must not touch the app's logs/state.
+        if (getProcessName().endsWith(":probe")) return
         CrashLog.init(this)
         AppState.init(this)
     }

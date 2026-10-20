@@ -48,6 +48,12 @@
                 android:value="On-device 3D model generation (long-running AI inference)" />
         </service>
 
+        <!-- Tests NPU/GPU in a separate process so a driver crash can't take down the app. -->
+        <service
+            android:name=".ProbeService"
+            android:exported="false"
+            android:process=":probe" />
+
         <receiver
             android:name=".CreateWidget"
             android:exported="true"

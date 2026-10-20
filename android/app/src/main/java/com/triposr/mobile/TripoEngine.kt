@@ -41,6 +41,18 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         const val CHUNK = 32768          // must match DECODER_CHUNK in export_onnx.py
         const val RADIUS = 0.87f
         const val DENSITY_THRESHOLD = 25f
+
+        /** QNN execution provider options for the NPU (HTP) or GPU backend. */
+        fun qnnOptions(b: Backend): Map<String, String> = when (b) {
+            Backend.NPU -> mapOf(
+                "backend_path" to "libQnnHtp.so",
+                "htp_performance_mode" to "burst",
+                "htp_graph_finalization_optimization_mode" to "3",
+                "enable_htp_fp16_precision" to "1",
+            )
+            Backend.GPU -> mapOf("backend_path" to "libQnnGpu.so")
+            Backend.CPU -> emptyMap()
+        }
     }
 
     private val env = OrtEnvironment.getEnvironment()
@@ -50,17 +62,33 @@ class TripoEngine(private val context: Context) : AutoCloseable {
     var backend: Backend? = null; private set
     var encoderBackend: Backend = Backend.CPU; private set
 
-    fun load(wanted: Backend, onStatus: (String) -> Unit) {
-        if (backend == wanted && encoder != null) return
+    /**
+     * Opens the models on the first backend in [chain] that works (CPU is always last).
+     * [onAttempt] is called before each try, so a native crash can be traced to the backend.
+     */
+    fun load(chain: List<Backend>, onStatus: (String) -> Unit, onAttempt: (Backend) -> Unit) {
+        if (backend == chain.first() && encoder != null) return
         closeSessions()
-        val t0 = System.nanoTime()
-        if (wanted == Backend.NPU) onStatus("מכין את המודל ל-NPU (בפעם הראשונה עד כמה דקות)")
-        val (e, used) = createSession(ModelStore.file(context, ENCODER), wanted, "encoder")
-        encoder = e
-        encoderBackend = used
-        decoder = createSession(ModelStore.file(context, DECODER), wanted, "decoder").first
-        backend = wanted
-        CrashLog.log("Sessions ready in %.1fs, encoder on ${used.label}".format((System.nanoTime() - t0) / 1e9))
+        var last: Throwable? = null
+        for (b in chain) {
+            onAttempt(b)
+            val t0 = System.nanoTime()
+            try {
+                onStatus(if (b == Backend.NPU) "מכין את המודל ל-NPU (בפעם הראשונה עד כמה דקות)" else "טוען את המודל ל-${b.short}")
+                encoder = createSession(ModelStore.file(context, ENCODER), b, "encoder")
+                decoder = createSession(ModelStore.file(context, DECODER), b, "decoder")
+                encoderBackend = b
+                backend = chain.first()
+                CrashLog.log("Sessions ready on ${b.label} in %.1fs".format((System.nanoTime() - t0) / 1e9))
+                return
+            } catch (e: Throwable) {
+                last = e
+                CrashLog.error("loading model on ${b.label}", e)
+                closeSessions()
+                if (e is OutOfMemoryError) System.gc()
+            }
+        }
+        throw IllegalStateException("לא הצלחתי לטעון את המודל על אף מעבד: ${last?.message}", last)
     }
 
     fun segmenter(): OrtSession = segmenter ?: run {
@@ -176,39 +204,29 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         return Output(mesh, timings)
     }
 
-    private fun createSession(model: File, wanted: Backend, cacheName: String): Pair<OrtSession, Backend> {
+    private fun createSession(model: File, b: Backend, cacheName: String): OrtSession {
         if (!model.exists()) throw IllegalStateException("המודל לא הורד עדיין (${model.name})")
-        if (wanted == Backend.CPU) return cpuSession(model) to Backend.CPU
+        if (b == Backend.CPU) return cpuSession(model)
         // Compiling a large graph for the NPU takes minutes, so the compiled QNN context is cached.
         // The model size is part of the name, so a new model never reuses an old cache.
-        val ctx = if (wanted == Backend.NPU) File(context.filesDir, "${cacheName}_${model.length()}_qnn_ctx.onnx") else null
+        val ctx = if (b == Backend.NPU) File(context.filesDir, "${cacheName}_${model.length()}_qnn_ctx.onnx") else null
+        val opts = OrtSession.SessionOptions()
+        opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        opts.addQnn(qnnOptions(b))
+        CrashLog.log("Creating ${b.short} session for ${model.name} (cached=${ctx?.exists() == true})")
         return try {
-            val opts = OrtSession.SessionOptions()
-            opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-            val qnn = mutableMapOf<String, String>()
-            if (wanted == Backend.NPU) {
-                qnn["backend_path"] = "libQnnHtp.so"
-                qnn["htp_performance_mode"] = "burst"
-                qnn["htp_graph_finalization_optimization_mode"] = "3"
-                qnn["enable_htp_fp16_precision"] = "1"
-            } else {
-                qnn["backend_path"] = "libQnnGpu.so"
-            }
-            opts.addQnn(qnn)
-            CrashLog.log("Creating ${wanted.short} session for ${model.name} (cached=${ctx?.exists() == true})")
             if (ctx != null && ctx.exists()) {
-                env.createSession(ctx.absolutePath, opts) to wanted
+                env.createSession(ctx.absolutePath, opts)
             } else {
                 if (ctx != null) {
                     opts.addConfigEntry("ep.context_enable", "1")
                     opts.addConfigEntry("ep.context_file_path", ctx.absolutePath)
                 }
-                env.createSession(model.absolutePath, opts) to wanted
+                env.createSession(model.absolutePath, opts)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             ctx?.delete()
-            CrashLog.error("${wanted.short} session for ${model.name}, falling back to CPU", e)
-            cpuSession(model) to Backend.CPU
+            throw e
         }
     }
 

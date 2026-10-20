@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.triposr.mobile.AppState
 import com.triposr.mobile.Backend
+import com.triposr.mobile.Capabilities
+import com.triposr.mobile.Support
 import com.triposr.mobile.BuildConfig
 import com.triposr.mobile.CrashLog
 import com.triposr.mobile.ExportFormat
@@ -302,7 +304,7 @@ fun SettingsScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val status = rememberModelStatus()
-    var backend by remember { mutableStateOf(Settings.backend(ctx)) }
+    var backend by remember { mutableStateOf(Settings.backendChoice(ctx)) }
     var quality by remember { mutableStateOf(Settings.quality(ctx)) }
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
@@ -317,16 +319,36 @@ fun SettingsScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Section(title = "מודל ה-AI") {
                 ModelCard(status, compact = false)
-                if (status is ModelStore.Status.Ready) SoftButton("מחק מודל (משחרר ${ModelStore.sizeOnDisk(ctx) shr 20} MB)",
+                if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל (משחרר ${ModelStore.sizeOnDisk(ctx) shr 20} MB)",
                     Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
             }
             Section(title = "ברירות מחדל") {
                 Text("מעבד", color = C.Sub, fontSize = 13.sp)
-                Segmented(Backend.entries.toList(), backend, { it.short }, { backend = it; Settings.setBackend(ctx, it) })
+                BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
                 Text("רמת פירוט", color = C.Sub, fontSize = 13.sp)
                 Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
                 ToggleRow("הסרת רקע אוטומטית", null, removeBg) { removeBg = it; Settings.setRemoveBackground(ctx, it) }
                 ToggleRow("החלקת משטח", null, smooth) { smooth = it; Settings.setSmooth(ctx, it) }
+            }
+            Section(title = "יכולות המכשיר") {
+                Text("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · ${android.os.Build.SOC_MODEL}" +
+                    if (Capabilities.isSnapdragon()) " (Snapdragon)" else " (לא Snapdragon — רק CPU)", color = C.Text, fontSize = 13.sp)
+                val results = remember(ProbeUi.tick, crashTick) { Capabilities.results(ctx) }
+                for (r in results.values) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(r.backend.label, color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Chip(r.support.label + if (r.ms > 0) " · %.0f ms".format(r.ms) else "",
+                            if (r.support == Support.OK) C.Green else if (r.support == Support.UNKNOWN) C.Sub else C.Orange)
+                    }
+                    if (r.detail.isNotEmpty() && r.support != Support.OK) Text(r.detail.take(160), color = C.Sub, fontSize = 11.sp)
+                }
+                if (ProbeUi.running) Text(ProbeUi.status, color = C.Violet, fontSize = 12.sp)
+                SoftButton(if (ProbeUi.running) "בודק…" else "בדוק שוב את המעבדים", Modifier.fillMaxWidth(),
+                    enabled = !ProbeUi.running && status is ModelStore.Status.Ready) {
+                    Backend.entries.forEach { AppState.clearCrashed(it) }
+                    crashTick++
+                    startProbe(ctx)
+                }
             }
             val crashed = remember(crashTick) { Backend.entries.filter { AppState.crashedBefore(it) } }
             if (crashed.isNotEmpty()) Section(title = "מעבדים שנסגרו בעבר") {
@@ -365,7 +387,7 @@ fun SettingsScreen() {
         onDismissRequest = { confirmDelete = false }, containerColor = C.Card,
         title = { Text("למחוק את המודל?", color = C.Text) },
         text = { Text("תצטרך להוריד אותו שוב (1.7GB) כדי ליצור מודלים חדשים. הפרויקטים השמורים נשארים.", color = C.Sub) },
-        confirmButton = { TextButton({ ModelStore.delete(ctx); confirmDelete = false }) { Text("מחק", color = C.Red) } },
+        confirmButton = { TextButton({ AppState.resetEngine(); ModelStore.delete(ctx); Capabilities.reset(ctx); confirmDelete = false }) { Text("מחק", color = C.Red) } },
         dismissButton = { TextButton({ confirmDelete = false }) { Text("ביטול", color = C.Sub) } },
     )
 }
