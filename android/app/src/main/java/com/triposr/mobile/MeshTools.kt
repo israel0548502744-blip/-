@@ -72,7 +72,7 @@ object MeshTools {
             }
             val sw = p; p = tmp; tmp = sw
         }
-        return Mesh(p, normals(p, idx), mesh.colors, idx)
+        return Mesh(p, normals(p, idx), mesh.colors, idx).withTextureOf(mesh)
     }
 
     /**
@@ -187,14 +187,27 @@ object MeshTools {
         out.flush()
     }
 
-    /** Compact binary format for saved projects. */
+    private const val UV_MAGIC = 0x55565331 // "UVS1"
+
+    /**
+     * Compact binary format for saved projects. A baked texture adds a UV block after the
+     * indices and a texture.bin next to [file].
+     */
     fun save(mesh: Mesh, file: File) {
         val nv = mesh.positions.size; val ni = mesh.indices.size
-        val buf = ByteBuffer.allocate(12 + (nv * 3 + ni) * 4).order(ByteOrder.LITTLE_ENDIAN)
+        val uvs = mesh.uvs?.takeIf { mesh.texture != null }
+        val buf = ByteBuffer.allocate(12 + (nv * 3 + ni) * 4 + (uvs?.let { 4 + it.size * 4 } ?: 0)).order(ByteOrder.LITTLE_ENDIAN)
         buf.putInt(0x4D525354).putInt(nv).putInt(ni)
         buf.asFloatBuffer().put(mesh.positions).put(mesh.normals).put(mesh.colors)
         buf.position(12 + nv * 3 * 4)
         buf.asIntBuffer().put(mesh.indices)
+        if (uvs != null) {
+            buf.position(12 + (nv * 3 + ni) * 4)
+            buf.putInt(UV_MAGIC)
+            buf.asFloatBuffer().put(uvs)
+        }
+        val texFile = File(file.parentFile, "texture.bin")
+        if (uvs != null) mesh.texture!!.save(texFile) else texFile.delete()
         buf.rewind()
         FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE,
             StandardOpenOption.TRUNCATE_EXISTING).use { it.write(buf) }
@@ -210,6 +223,14 @@ object MeshTools {
         fb.get(pos); fb.get(nor); fb.get(col)
         val ib = ByteBuffer.wrap(bytes, 12 + nv * 12, ni * 4).slice().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
         val idx = IntArray(ni).also { ib.get(it) }
-        return Mesh(pos, nor, col, idx)
+        val mesh = Mesh(pos, nor, col, idx)
+        val uvAt = 12 + (nv * 3 + ni) * 4
+        if (bytes.size >= uvAt + 4 + ni * 8 && buf.getInt(uvAt) == UV_MAGIC) {
+            val uvs = FloatArray(ni * 2)
+            ByteBuffer.wrap(bytes, uvAt + 4, ni * 8).slice().order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(uvs)
+            val tex = Texture.load(File(file.parentFile, "texture.bin"))
+            if (tex != null) { mesh.uvs = uvs; mesh.texture = tex }
+        }
+        return mesh
     }
 }

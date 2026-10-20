@@ -52,8 +52,13 @@ object Settings {
     fun smooth(ctx: Context) = prefs(ctx).getBoolean("smooth", true)
     fun setSmooth(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("smooth", v).apply()
 
+    /** Bake a texture (sharp colors) instead of only per-vertex colors. On by default. */
+    fun bakeTexture(ctx: Context) = prefs(ctx).getBoolean("bake_texture", true)
+    fun setBakeTexture(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("bake_texture", v).apply()
+
     fun describe(ctx: Context) =
-        "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, smooth=${smooth(ctx)}"
+        "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, " +
+            "smooth=${smooth(ctx)}, texture=${bakeTexture(ctx)}"
 }
 
 enum class Quality(val label: String, val resolution: Int, val hint: String) {

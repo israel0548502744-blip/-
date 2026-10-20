@@ -11,6 +11,16 @@ class Mesh(
     var colors: FloatArray,
     val indices: IntArray,
 ) {
+    /** Per-corner UVs (aligned with [indices]) and the baked texture; null without texture baking. */
+    var uvs: FloatArray? = null
+    var texture: Texture? = null
+
+    /** Copies the texture of [from] when the triangles are unchanged (same indices). */
+    fun withTextureOf(from: Mesh): Mesh {
+        if (indices === from.indices || indices.contentEquals(from.indices)) { uvs = from.uvs; texture = from.texture }
+        return this
+    }
+
     val vertexCount get() = positions.size / 3
     val triangleCount get() = indices.size / 3
 
@@ -27,7 +37,7 @@ class Mesh(
             }
             return out
         }
-        return Mesh(rot(positions), rot(normals), colors, indices)
+        return Mesh(rot(positions), rot(normals), colors, indices).withTextureOf(this)
     }
 
     fun writeObj(out: OutputStream) {
@@ -47,40 +57,60 @@ class Mesh(
         w.flush()
     }
 
-    /** Binary glTF 2.0 with POSITION, NORMAL, COLOR_0 and uint32 indices. */
+    /**
+     * Binary glTF 2.0. With a baked texture: POSITION, NORMAL, TEXCOORD_0 and an embedded PNG;
+     * otherwise POSITION, NORMAL and COLOR_0. Indices are uint32.
+     */
     fun writeGlb(out: OutputStream) {
-        val n = vertexCount
+        val tex = texturedArrays()
+        val pos = tex?.positions ?: positions
+        val nor = tex?.normals ?: normals
+        val idx = tex?.indices ?: indices
+        val png = if (tex != null) texture!!.toPng() else null
+        val n = pos.size / 3
         val vecBytes = n * 12
-        val idxBytes = indices.size * 4
-        val bin = ByteBuffer.allocate(vecBytes * 3 + idxBytes).order(ByteOrder.LITTLE_ENDIAN)
-        bin.asFloatBuffer().put(positions).put(normals).put(colors)
-        bin.position(vecBytes * 3)
-        bin.asIntBuffer().put(indices)
+        val thirdBytes = if (tex != null) n * 8 else vecBytes
+        val idxBytes = idx.size * 4
+        val pngOffset = vecBytes * 2 + thirdBytes + idxBytes
+        val pngBytes = png?.size ?: 0
+        val binSize = (pngOffset + pngBytes + 3) / 4 * 4
+        val bin = ByteBuffer.allocate(binSize).order(ByteOrder.LITTLE_ENDIAN)
+        bin.asFloatBuffer().put(pos).put(nor).put(tex?.uvs ?: colors)
+        bin.position(vecBytes * 2 + thirdBytes)
+        bin.asIntBuffer().put(idx)
+        if (png != null) { bin.position(pngOffset); bin.put(png) }
 
         val min = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
         val max = floatArrayOf(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
         for (v in 0 until n) for (c in 0..2) {
-            min[c] = minOf(min[c], positions[v * 3 + c]); max[c] = maxOf(max[c], positions[v * 3 + c])
+            min[c] = minOf(min[c], pos[v * 3 + c]); max[c] = maxOf(max[c], pos[v * 3 + c])
         }
+        val pbr = if (tex != null) """"baseColorTexture":{"index":0},""" else ""
+        val third = if (tex != null) """"TEXCOORD_0":2""" else """"COLOR_0":2"""
+        val textures = if (tex != null) """
+             "samplers":[{"magFilter":9729,"minFilter":9729,"wrapS":33071,"wrapT":33071}],
+             "images":[{"bufferView":4,"mimeType":"image/png"}],
+             "textures":[{"sampler":0,"source":0}],""" else ""
+        val imageView = if (tex != null) """,{"buffer":0,"byteOffset":$pngOffset,"byteLength":$pngBytes}""" else ""
         val json = """
             {"asset":{"version":"2.0","generator":"TripoSR mobile"},
-             "scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
-             "materials":[{"pbrMetallicRoughness":{"baseColorFactor":[1,1,1,1],"metallicFactor":0,"roughnessFactor":1},"doubleSided":true}],
-             "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"COLOR_0":2},"indices":3,"material":0}]}],
-             "buffers":[{"byteLength":${bin.capacity()}}],
+             "scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],$textures
+             "materials":[{"pbrMetallicRoughness":{${pbr}"baseColorFactor":[1,1,1,1],"metallicFactor":0,"roughnessFactor":1},"doubleSided":true}],
+             "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,$third},"indices":3,"material":0}]}],
+             "buffers":[{"byteLength":$binSize}],
              "bufferViews":[
                {"buffer":0,"byteOffset":0,"byteLength":$vecBytes,"target":34962},
                {"buffer":0,"byteOffset":$vecBytes,"byteLength":$vecBytes,"target":34962},
-               {"buffer":0,"byteOffset":${vecBytes * 2},"byteLength":$vecBytes,"target":34962},
-               {"buffer":0,"byteOffset":${vecBytes * 3},"byteLength":$idxBytes,"target":34963}],
+               {"buffer":0,"byteOffset":${vecBytes * 2},"byteLength":$thirdBytes,"target":34962},
+               {"buffer":0,"byteOffset":${vecBytes * 2 + thirdBytes},"byteLength":$idxBytes,"target":34963}$imageView],
              "accessors":[
                {"bufferView":0,"componentType":5126,"count":$n,"type":"VEC3","min":[${min.joinToString(",")}],"max":[${max.joinToString(",")}]},
                {"bufferView":1,"componentType":5126,"count":$n,"type":"VEC3"},
-               {"bufferView":2,"componentType":5126,"count":$n,"type":"VEC3"},
-               {"bufferView":3,"componentType":5125,"count":${indices.size},"type":"SCALAR"}]}
+               {"bufferView":2,"componentType":5126,"count":$n,"type":"${if (tex != null) "VEC2" else "VEC3"}"},
+               {"bufferView":3,"componentType":5125,"count":${idx.size},"type":"SCALAR"}]}
         """.trimIndent().replace("\n", "").toByteArray(Charsets.UTF_8)
         val jsonPadded = (json.size + 3) / 4 * 4
-        val total = 12 + 8 + jsonPadded + 8 + bin.capacity()
+        val total = 12 + 8 + jsonPadded + 8 + binSize
 
         val header = ByteBuffer.allocate(12 + 8).order(ByteOrder.LITTLE_ENDIAN)
         header.putInt(0x46546C67).putInt(2).putInt(total)   // "glTF", version, length
@@ -89,7 +119,7 @@ class Mesh(
         out.write(json)
         repeat(jsonPadded - json.size) { out.write(' '.code) }
         val binHeader = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
-        binHeader.putInt(bin.capacity()).putInt(0x004E4942)  // BIN chunk
+        binHeader.putInt(binSize).putInt(0x004E4942)  // BIN chunk
         out.write(binHeader.array())
         out.write(bin.array())
         out.flush()

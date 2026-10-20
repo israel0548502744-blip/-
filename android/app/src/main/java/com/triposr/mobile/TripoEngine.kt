@@ -21,10 +21,11 @@ enum class Backend(val label: String, val short: String) {
 enum class Stage(val label: String, val weight: Float) {
     LOAD("טעינת המודל", 0.10f),
     SEGMENT("הסרת רקע", 0.05f),
-    ENCODE("ניתוח התמונה", 0.25f),
-    FIELD("בניית שדה תלת־ממד", 0.40f),
-    SURFACE("יצירת רשת פוליגונים", 0.10f),
-    COLOR("צביעה והחלקה", 0.10f),
+    ENCODE("ניתוח התמונה", 0.20f),
+    FIELD("בניית שדה תלת־ממד", 0.35f),
+    SURFACE("יצירת רשת פוליגונים", 0.08f),
+    COLOR("צביעה והחלקה", 0.07f),
+    TEXTURE("צביעה חדה (טקסטורה)", 0.15f),
 }
 
 /**
@@ -154,11 +155,15 @@ class TripoEngine(private val context: Context) : AutoCloseable {
 
     class Output(val mesh: Mesh, val timings: Map<Stage, Double>)
 
-    /** Triplane -> density grid -> surface -> vertex colors. [progress] gets (stage, 0..1 within it). */
+    /**
+     * Triplane -> density grid -> surface -> vertex colors -> optional baked texture of
+     * [textureSize]² texels (0 = no texture). [progress] gets (stage, 0..1 within it).
+     */
     fun reconstruct(
         image: FloatArray,
         resolution: Int,
         smooth: Boolean,
+        textureSize: Int,
         progress: (Stage, Float) -> Unit,
         cancelled: () -> Boolean,
     ): Output {
@@ -206,9 +211,31 @@ class TripoEngine(private val context: Context) : AutoCloseable {
                 onProgress = { progress(Stage.COLOR, it) },
                 cancelled = cancelled)
             m.colors = colors
-            m.toYUp()
+            m
         }
-        return Output(mesh, timings)
+
+        if (textureSize > 0) TextureAtlas.build(mesh, textureSize)?.let { atlas ->
+            mesh = timed(Stage.TEXTURE) {
+                val px = IntArray(textureSize * textureSize)
+                val pixelOf = IntArray(CHUNK)
+                val src = mesh.positions
+                query(codes, atlas.texelCount,
+                    pointAt = { idx, p -> pixelOf[idx % CHUNK] = atlas.texel(idx, src, p) },
+                    sink = { _, n, _, color ->
+                        for (q in 0 until n) {
+                            fun ch(k: Int) = (color.get(q * 3 + k).coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+                            px[pixelOf[q]] = (0xFF shl 24) or (ch(0) shl 16) or (ch(1) shl 8) or ch(2)
+                        }
+                    },
+                    onProgress = { progress(Stage.TEXTURE, it) },
+                    cancelled = cancelled)
+                Mesh(mesh.positions, mesh.normals, mesh.colors, atlas.indices).apply {
+                    uvs = atlas.uvs
+                    texture = Texture(textureSize, px)
+                }
+            }
+        } ?: CrashLog.log("Texture skipped: mesh too dense for ${textureSize}px")
+        return Output(mesh.toYUp(), timings)
     }
 
     private fun createSession(model: File, b: Backend, cacheName: String): OrtSession {

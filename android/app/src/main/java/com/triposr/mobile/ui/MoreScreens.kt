@@ -167,6 +167,8 @@ fun ResultScreen() {
                 Slider(smoothIt, { smoothIt = it }, valueRange = 0f..10f, colors = sliderColors())
                 Text("פישוט (פחות פוליגונים): ${(reduce * 100).toInt()}%", color = C.Sub, fontSize = 13.sp)
                 Slider(reduce, { reduce = it }, valueRange = 0f..0.9f, colors = sliderColors())
+                if (reduce > 0.01f && (AppState.originalMesh ?: mesh).texture != null)
+                    Text("פישוט מבטל את הצביעה החדה (נשאר צבע בסיסי)", color = C.Amber, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GradientButton("החל", Modifier.weight(1f), Icons.Rounded.Tune, enabled = !busy) {
                         busy = true
@@ -190,7 +192,8 @@ fun ResultScreen() {
             Section(title = "ייצוא") {
                 Segmented(ExportFormat.entries.toList(), format, { it.label }, { format = it })
                 Text(when (format) {
-                    ExportFormat.GLB -> "מומלץ: עם צבעים, נפתח בכל צופה 3D ובאנדרואיד"
+                    ExportFormat.GLB -> if (mesh.texture != null) "מומלץ: עם הטקסטורה החדה, נפתח בכל צופה 3D ובאנדרואיד"
+                        else "מומלץ: עם צבעים, נפתח בכל צופה 3D ובאנדרואיד"
                     ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד)"
                     ExportFormat.STL -> "להדפסה תלת־ממדית (בלי צבע)"
                     ExportFormat.PLY -> "סריקות ו-MeshLab, עם צבעים"
@@ -317,6 +320,7 @@ fun SettingsScreen() {
     var quality by remember { mutableStateOf(Settings.quality(ctx)) }
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
+    var texture by remember { mutableStateOf(Settings.bakeTexture(ctx)) }
     var checking by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -339,6 +343,9 @@ fun SettingsScreen() {
                 Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
                 ToggleRow("הסרת רקע אוטומטית", null, removeBg) { removeBg = it; Settings.setRemoveBackground(ctx, it) }
                 ToggleRow("החלקת משטח", null, smooth) { smooth = it; Settings.setSmooth(ctx, it) }
+                ToggleRow("צביעה חדה (טקסטורה)", "פנים, בגדים והדפסים חדים יותר · מוסיף כמה שניות", texture) {
+                    texture = it; Settings.setBakeTexture(ctx, it)
+                }
             }
             Section(title = "יכולות המכשיר") {
                 Text("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · ${android.os.Build.SOC_MODEL}" +

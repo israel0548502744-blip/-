@@ -174,7 +174,13 @@ object AppState {
                 framed = frame
 
                 val t0 = System.nanoTime()
-                val out = eng.reconstruct(Preprocess.toChw(frame), quality.resolution, smooth,
+                // Texture baking costs one decoder pass per texel: 4M texels on NPU/GPU, 1M on the CPU.
+                val textureSize = when {
+                    !Settings.bakeTexture(app) -> 0
+                    eng.encoderBackend == Backend.CPU -> 1024
+                    else -> 2048
+                }
+                val out = eng.reconstruct(Preprocess.toChw(frame), quality.resolution, smooth, textureSize,
                     progress = { s, p -> stage(s, p) },
                     cancelled = { cancelRequested })
                 val seconds = (System.nanoTime() - t0) / 1e9

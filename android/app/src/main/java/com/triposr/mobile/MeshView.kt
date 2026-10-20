@@ -94,7 +94,9 @@ private class MeshRenderer : GLSurfaceView.Renderer {
     @Volatile var autoRotate = false
 
     private var program = 0
-    private val vbo = IntArray(6) // pos, normal, color, tri idx, line idx, grid
+    private val vbo = IntArray(7) // pos, normal, color, tri idx, line idx, grid, uv
+    private val tex = IntArray(1)
+    private var textured = false
     private var indexCount = 0
     private var lineCount = 0
     private var gridCount = 0
@@ -109,21 +111,43 @@ private class MeshRenderer : GLSurfaceView.Renderer {
         current = mesh
         indexCount = 0
         lineCount = 0
+        textured = false
         if (mesh == null || program == 0) return
         fun fbuf(a: FloatArray) = ByteBuffer.allocateDirect(a.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().put(a).position(0)
         fun ibuf(a: IntArray) = ByteBuffer.allocateDirect(a.size * 4).order(ByteOrder.nativeOrder()).asIntBuffer().put(a).position(0)
-        for ((slot, data) in listOf(mesh.positions, mesh.normals, mesh.colors).withIndex()) {
+        // A baked texture needs one vertex per (vertex, UV) pair; otherwise draw the shared vertices.
+        val t = mesh.texturedArrays()
+        val indices = t?.indices ?: mesh.indices
+        val arrays = if (t != null) listOf(0 to t.positions, 1 to t.normals, 6 to t.uvs)
+            else listOf(0 to mesh.positions, 1 to mesh.normals, 2 to mesh.colors)
+        for ((slot, data) in arrays) {
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[slot])
             GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, data.size * 4, fbuf(data), GLES30.GL_STATIC_DRAW)
         }
+        if (t != null) {
+            val texture = mesh.texture!!
+            val rgba = ByteBuffer.allocateDirect(texture.pixels.size * 4).order(ByteOrder.nativeOrder())
+            for (c in texture.pixels) { rgba.put((c shr 16).toByte()); rgba.put((c shr 8).toByte()); rgba.put(c.toByte()); rgba.put(-1) }
+            rgba.position(0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex[0])
+            GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT, 4)
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, texture.size, texture.size, 0,
+                GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, rgba)
+            // No mipmaps: lower levels would blend neighbouring atlas cells.
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            textured = true
+        }
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, vbo[3])
-        GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * 4, ibuf(mesh.indices), GLES30.GL_STATIC_DRAW)
-        indexCount = mesh.indices.size
+        GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, indices.size * 4, ibuf(indices), GLES30.GL_STATIC_DRAW)
+        indexCount = indices.size
 
-        val lines = IntArray(mesh.indices.size * 2)
-        for (t in 0 until mesh.triangleCount) for (e in 0..2) {
-            lines[t * 6 + e * 2] = mesh.indices[t * 3 + e]
-            lines[t * 6 + e * 2 + 1] = mesh.indices[t * 3 + (e + 1) % 3]
+        val lines = IntArray(indices.size * 2)
+        for (tri in 0 until indices.size / 3) for (e in 0..2) {
+            lines[tri * 6 + e * 2] = indices[tri * 3 + e]
+            lines[tri * 6 + e * 2 + 1] = indices[tri * 3 + (e + 1) % 3]
         }
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, vbo[4])
         GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, lines.size * 4, ibuf(lines), GLES30.GL_STATIC_DRAW)
@@ -159,21 +183,25 @@ private class MeshRenderer : GLSurfaceView.Renderer {
             layout(location=0) in vec3 aPos;
             layout(location=1) in vec3 aNormal;
             layout(location=2) in vec3 aColor;
+            layout(location=3) in vec2 aUv;
             uniform mat4 uMvp; uniform mat4 uModel;
-            out vec3 vNormal; out vec3 vColor;
+            out vec3 vNormal; out vec3 vColor; out vec2 vUv;
             void main() {
                 vNormal = mat3(uModel) * aNormal;
                 vColor = aColor;
+                vUv = aUv;
                 gl_Position = uMvp * vec4(aPos, 1.0);
             }""",
             """#version 300 es
             precision mediump float;
-            in vec3 vNormal; in vec3 vColor;
+            in vec3 vNormal; in vec3 vColor; in highp vec2 vUv;
             uniform int uFlat; uniform vec4 uFlatColor; uniform int uUseColor; uniform int uLight;
+            uniform int uTextured; uniform sampler2D uTex;
             out vec4 fragColor;
             void main() {
                 if (uFlat == 1) { fragColor = uFlatColor; return; }
-                vec3 base = uUseColor == 1 ? vColor : vec3(0.82, 0.82, 0.86);
+                vec3 base = uUseColor == 0 ? vec3(0.82, 0.82, 0.86)
+                    : uTextured == 1 ? texture(uTex, vUv).rgb : vColor;
                 if (uLight == 0) { fragColor = vec4(base, 1.0); return; }
                 vec3 n = normalize(vNormal);
                 if (!gl_FrontFacing) n = -n;
@@ -183,6 +211,7 @@ private class MeshRenderer : GLSurfaceView.Renderer {
                 fragColor = vec4(c, 1.0);
             }""")
         GLES30.glGenBuffers(vbo.size, vbo, 0)
+        GLES30.glGenTextures(1, tex, 0)
         upload(current) // the GL context is new, re-upload the mesh if we already have one
     }
 
@@ -209,7 +238,7 @@ private class MeshRenderer : GLSurfaceView.Renderer {
 
         if (grid) {
             GLES30.glUniform1i(loc("uFlat"), 1)
-            GLES30.glDisableVertexAttribArray(1); GLES30.glDisableVertexAttribArray(2)
+            GLES30.glDisableVertexAttribArray(1); GLES30.glDisableVertexAttribArray(2); GLES30.glDisableVertexAttribArray(3)
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[5])
             GLES30.glEnableVertexAttribArray(0)
             GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
@@ -220,10 +249,25 @@ private class MeshRenderer : GLSurfaceView.Renderer {
         GLES30.glUniform1i(loc("uFlat"), 0)
         GLES30.glUniform1i(loc("uUseColor"), if (colors) 1 else 0)
         GLES30.glUniform1i(loc("uLight"), if (lighting) 1 else 0)
-        for (slot in 0..2) {
+        GLES30.glUniform1i(loc("uTextured"), if (textured) 1 else 0)
+        for (slot in 0..1) {
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[slot])
             GLES30.glEnableVertexAttribArray(slot)
             GLES30.glVertexAttribPointer(slot, 3, GLES30.GL_FLOAT, false, 0, 0)
+        }
+        if (textured) {
+            GLES30.glDisableVertexAttribArray(2)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[6])
+            GLES30.glEnableVertexAttribArray(3)
+            GLES30.glVertexAttribPointer(3, 2, GLES30.GL_FLOAT, false, 0, 0)
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex[0])
+            GLES30.glUniform1i(loc("uTex"), 0)
+        } else {
+            GLES30.glDisableVertexAttribArray(3)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[2])
+            GLES30.glEnableVertexAttribArray(2)
+            GLES30.glVertexAttribPointer(2, 3, GLES30.GL_FLOAT, false, 0, 0)
         }
         GLES30.glEnable(GLES30.GL_POLYGON_OFFSET_FILL)
         GLES30.glPolygonOffset(1f, 1f)
