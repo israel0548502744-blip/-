@@ -165,6 +165,8 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         resolution: Int,
         smooth: Boolean,
         textureSize: Int,
+        smoothIterations: Int = 3,
+        densityThreshold: Float = DENSITY_THRESHOLD,
         progress: (Stage, Float) -> Unit,
         cancelled: () -> Boolean,
     ): Output {
@@ -186,7 +188,7 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         val step = 2f * RADIUS / (res - 1)
         val field = timed(Stage.FIELD) {
             val field = FloatArray(res * res * res)
-            val iso = ln(DENSITY_THRESHOLD)
+            val iso = ln(densityThreshold)
             query(codes, field.size,
                 pointAt = { idx, p ->
                     p[0] = -RADIUS + (idx / (res * res)) * step
@@ -207,7 +209,7 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         CrashLog.log("Surface: ${mesh.vertexCount} vertices, ${mesh.triangleCount} triangles")
 
         mesh = timed(Stage.COLOR) {
-            val m = if (smooth) MeshTools.smooth(mesh, 3) else mesh
+            val m = if (smooth) MeshTools.smooth(mesh, smoothIterations) else mesh
             val colors = FloatArray(m.positions.size)
             query(codes, m.vertexCount,
                 pointAt = { idx, p -> System.arraycopy(m.positions, idx * 3, p, 0, 3) },

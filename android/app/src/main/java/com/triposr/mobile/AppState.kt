@@ -237,7 +237,11 @@ object AppState {
                     eng.encoderBackend == Backend.CPU -> 1024
                     else -> 2048
                 }
+                val smoothIterations = Settings.smoothStrength(app)
+                val density = Settings.densityThreshold(app)
+                CrashLog.log("Advanced: smooth=$smoothIterations density=$density")
                 val out = eng.reconstruct(Preprocess.toChw(frame), quality.resolution, smooth, textureSize,
+                    smoothIterations, density,
                     progress = { s, p -> stage(s, p) },
                     cancelled = { cancelRequested })
                 val seconds = (System.nanoTime() - t0) / 1e9

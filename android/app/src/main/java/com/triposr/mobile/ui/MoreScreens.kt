@@ -274,7 +274,7 @@ fun ResultScreen() {
 }
 
 @Composable
-private fun sliderColors() = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = C.Magenta,
+internal fun sliderColors() = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = C.Magenta,
     inactiveTrackColor = Color(0x22FFFFFF), activeTickColor = Color(0x66FFFFFF), inactiveTickColor = Color(0x33FFFFFF))
 
 @Composable

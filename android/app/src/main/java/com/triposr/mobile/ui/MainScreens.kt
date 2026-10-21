@@ -78,6 +78,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.triposr.mobile.AppState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material3.Slider
+import kotlin.math.roundToInt
+import com.triposr.mobile.TripoEngine
 import com.triposr.mobile.Backend
 import com.triposr.mobile.Capabilities
 import com.triposr.mobile.CrashLog
@@ -545,6 +552,7 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                     smooth = it; Settings.setSmooth(ctx, it)
                 }
             }
+            AdvancedOptions(smooth)
             Spacer(Modifier.height(4.dp))
         }
         Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
@@ -555,6 +563,49 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
             GradientButton("צור מודל 3D", Modifier.fillMaxWidth(), sparkles = true,
                 enabled = image != null && status is ModelStore.Status.Ready && !AppState.isRunning) {
                 AppState.start(backend, quality, removeBg, smooth)
+            }
+        }
+    }
+}
+
+/**
+ * Settings that measurably change the finish (tested on real reconstructions), hidden until
+ * opened. Object ratio, grey level and mask threshold were tested too and only distorted the
+ * result, so they stay at TripoSR's values.
+ */
+@Composable
+private fun AdvancedOptions(smoothOn: Boolean) {
+    val ctx = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    var strength by remember { mutableFloatStateOf(Settings.smoothStrength(ctx).toFloat()) }
+    var density by remember { mutableFloatStateOf(Settings.densityThreshold(ctx)) }
+    Section {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { open = !open }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Tune, null, tint = C.Violet, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("הגדרות מתקדמות", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Sub)
+        }
+        AnimatedVisibility(open) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("עוצמת החלקה: ${strength.roundToInt()}" + if (strength.roundToInt() == Settings.DEFAULT_SMOOTH) " (ברירת מחדל)" else "",
+                    color = C.Text, fontSize = 14.sp)
+                Slider(strength, { strength = it }, valueRange = 1f..10f, enabled = smoothOn,
+                    onValueChangeFinished = { Settings.setSmoothStrength(ctx, strength.roundToInt()) }, colors = sliderColors())
+                Text(if (smoothOn) "גבוה מעלים את \"הטבעות\" על המשטח, שמודפסות כפסים. נמוך שומר על פרטים קטנים."
+                    else "מופעל רק כשהחלקת משטח דולקת.", color = C.Sub, fontSize = 12.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("עובי ומילוי: %.0f".format(density) + if (density == TripoEngine.DENSITY_THRESHOLD) " (ברירת מחדל)" else "",
+                    color = C.Text, fontSize = 14.sp)
+                Slider(density, { density = it.roundToInt().toFloat() }, valueRange = 5f..50f,
+                    onValueChangeFinished = { Settings.setDensityThreshold(ctx, density) }, colors = sliderColors())
+                Text("נמוך: מודל מלא יותר וחלקים דקים עבים יותר, טוב להדפסה. גבוה: מודל רזה וחד יותר.",
+                    color = C.Sub, fontSize = 12.sp)
+                SoftButton("אפס לברירת מחדל", Modifier.fillMaxWidth()) {
+                    Settings.resetAdvanced(ctx)
+                    strength = Settings.DEFAULT_SMOOTH.toFloat(); density = TripoEngine.DENSITY_THRESHOLD
+                }
             }
         }
     }

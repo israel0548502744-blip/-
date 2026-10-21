@@ -52,13 +52,31 @@ object Settings {
     fun smooth(ctx: Context) = prefs(ctx).getBoolean("smooth", true)
     fun setSmooth(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("smooth", v).apply()
 
+    /**
+     * Advanced: smoothing passes (Taubin, keeps volume). 3 is the default; 6-10 removes the
+     * contour "rings" that would print as ridges, at the cost of fine detail.
+     */
+    fun smoothStrength(ctx: Context) = prefs(ctx).getInt("smooth_strength", DEFAULT_SMOOTH)
+    fun setSmoothStrength(ctx: Context, v: Int) = prefs(ctx).edit().putInt("smooth_strength", v).apply()
+
+    /**
+     * Advanced: density at which the surface is placed (TripoSR default 25). Lower makes the
+     * object fuller and thin parts thicker (and drops fewer loose bits); higher makes it slimmer.
+     */
+    fun densityThreshold(ctx: Context) = prefs(ctx).getFloat("density_threshold", TripoEngine.DENSITY_THRESHOLD)
+    fun setDensityThreshold(ctx: Context, v: Float) = prefs(ctx).edit().putFloat("density_threshold", v).apply()
+
+    fun resetAdvanced(ctx: Context) = prefs(ctx).edit().remove("smooth_strength").remove("density_threshold").apply()
+
+    const val DEFAULT_SMOOTH = 3
+
     /** Bake a texture (sharp colors) instead of only per-vertex colors. On by default. */
     fun bakeTexture(ctx: Context) = prefs(ctx).getBoolean("bake_texture", true)
     fun setBakeTexture(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("bake_texture", v).apply()
 
     fun describe(ctx: Context) =
         "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, " +
-            "smooth=${smooth(ctx)}, texture=${bakeTexture(ctx)}"
+            "smooth=${smooth(ctx)}x${smoothStrength(ctx)}, density=${densityThreshold(ctx)}, texture=${bakeTexture(ctx)}"
 }
 
 enum class Quality(val label: String, val resolution: Int, val hint: String) {
