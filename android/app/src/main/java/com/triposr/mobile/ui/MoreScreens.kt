@@ -73,6 +73,7 @@ import com.triposr.mobile.AppState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Warning
+import com.triposr.mobile.Mesh
 import com.triposr.mobile.PrintModel
 import com.triposr.mobile.Printability
 import com.triposr.mobile.Backend
