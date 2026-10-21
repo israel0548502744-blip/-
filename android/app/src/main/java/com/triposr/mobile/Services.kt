@@ -64,7 +64,9 @@ object Settings {
 enum class Quality(val label: String, val resolution: Int, val hint: String) {
     LOW("נמוכה", 128, "מהיר, כמה שניות"),
     MEDIUM("בינונית", 192, "מאוזן"),
-    HIGH("גבוהה", 256, "הכי מפורט, איטי יותר"),
+    HIGH("גבוהה", 256, "מפורט, איטי יותר"),
+    /** Twice the samples of HIGH. Surfaces get a little smoother; detail is capped by the model itself. */
+    MAX("מקסימלית", 320, "משטח חלק יותר, פי 2 זמן. מומלץ עם NPU/GPU"),
 }
 
 /** A set of files downloaded together from the models release. */

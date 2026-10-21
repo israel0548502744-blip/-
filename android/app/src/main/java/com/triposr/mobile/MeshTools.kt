@@ -18,6 +18,7 @@ enum class ExportFormat(val ext: String, val mime: String, val label: String, va
     OBJ_ZIP("zip", "application/zip", "OBJ+PNG", true),
     OBJ("obj", "text/plain", "OBJ", false),
     STL("stl", "model/stl", "STL", false),
+    THREE_MF("3mf", "model/3mf", "3MF", false),
     PLY("ply", "application/octet-stream", "PLY", false);
 
     companion object {
@@ -144,7 +145,9 @@ object MeshTools {
         ExportFormat.GLB -> mesh.writeGlb(out)
         ExportFormat.OBJ_ZIP -> mesh.writeObjZip(out)
         ExportFormat.OBJ -> mesh.writeObj(out)
-        ExportFormat.STL -> writeStl(mesh, out)
+        // Print formats get the repaired, millimetre-scaled, Z-up model.
+        ExportFormat.STL -> writeStl(Printability.prepared(mesh).mesh, out)
+        ExportFormat.THREE_MF -> Printability.write3mf(Printability.prepared(mesh).mesh, out)
         ExportFormat.PLY -> writePly(mesh, out)
     }
 

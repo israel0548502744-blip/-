@@ -199,6 +199,9 @@ class TripoEngine(private val context: Context) : AutoCloseable {
             field
         }
 
+        // Treat the grid's outer layer as empty space so an object touching the bounding box
+        // still gets a closed (watertight) surface instead of a hole.
+        closeBoundary(field, res)
         var mesh = timed(Stage.SURFACE) { SurfaceNets.extract(field, res, RADIUS) }
         if (mesh.vertexCount == 0) throw IllegalStateException("לא נמצא אובייקט בתמונה. נסה תמונה עם אובייקט ברור במרכז.")
         CrashLog.log("Surface: ${mesh.vertexCount} vertices, ${mesh.triangleCount} triangles")
@@ -237,6 +240,16 @@ class TripoEngine(private val context: Context) : AutoCloseable {
             }
         } ?: CrashLog.log("Texture skipped: mesh too dense for ${textureSize}px")
         return Output(mesh.toYUp(), timings)
+    }
+
+    private fun closeBoundary(field: FloatArray, res: Int) {
+        val last = res - 1
+        for (i in 0 until res) for (j in 0 until res) for (k in 0 until res) {
+            if (i == 0 || j == 0 || k == 0 || i == last || j == last || k == last) {
+                val n = (i * res + j) * res + k
+                if (field[n] > 0f) field[n] = -1e-3f
+            }
+        }
     }
 
     private fun createSession(model: File, b: Backend, cacheName: String): OrtSession {

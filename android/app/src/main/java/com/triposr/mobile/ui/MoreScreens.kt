@@ -70,6 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.triposr.mobile.AppState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Warning
+import com.triposr.mobile.PrintModel
+import com.triposr.mobile.Printability
 import com.triposr.mobile.Backend
 import com.triposr.mobile.Capabilities
 import com.triposr.mobile.Support
@@ -112,6 +117,21 @@ fun ResultScreen() {
     var edited by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var exportTime by remember { mutableStateOf<String?>(null) }
+    var print by remember { mutableStateOf<PrintModel?>(null) }
+    var thinPreview by remember { mutableStateOf<Mesh?>(null) }
+    var showThin by remember { mutableStateOf(false) }
+    LaunchedEffect(mesh) {
+        print = null; thinPreview = null; showThin = false
+        runCatching {
+            withContext(Dispatchers.Default) {
+                val t0 = System.nanoTime()
+                Printability.prepared(mesh).also {
+                    CrashLog.log("Print check in %.2fs: watertight=${it.report.watertight} minWall=%.2fmm".format(
+                        (System.nanoTime() - t0) / 1e9, it.report.minWallMm))
+                }
+            }
+        }.onSuccess { print = it }.onFailure { CrashLog.error("print check", it) }
+    }
     val formats = ExportFormat.available(mesh)
     if (format !in formats) format = ExportFormat.GLB
 
@@ -153,7 +173,7 @@ fun ResultScreen() {
                     factory = { MeshView(it).also { v -> view = v } },
                     modifier = Modifier.fillMaxSize(),
                     update = { v ->
-                        v.setMesh(mesh)
+                        v.setMesh(if (showThin) thinPreview ?: mesh else mesh)
                         v.setOptions(colors, wire, light, grid, rotate)
                     },
                     onRelease = { it.onPause() },
@@ -206,6 +226,14 @@ fun ResultScreen() {
                 }
             }
 
+            PrintSection(print, showThin, busy,
+                onShowThin = { on ->
+                    val pm = print
+                    if (on && thinPreview == null && pm != null) thinPreview = Printability.thicknessPreview(pm)
+                    showThin = on
+                },
+                onExport = { f -> export(f) { Actions.share(ctx, it, f) } })
+
             Section(title = "ייצוא") {
                 Segmented(formats, format, { it.label }, { format = it })
                 Text(when (format) {
@@ -213,7 +241,8 @@ fun ResultScreen() {
                         else "מומלץ: עם צבעים, נפתח בכל צופה 3D ובאנדרואיד"
                     ExportFormat.OBJ_ZIP -> "ZIP עם OBJ, MTL ו-PNG: הטקסטורה החדה ל-Blender ו-MeshLab"
                     ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד, בלי הטקסטורה)"
-                    ExportFormat.STL -> "להדפסה תלת־ממדית (בלי צבע)"
+                    ExportFormat.STL -> "להדפסה: מתוקן, במילימטרים, עומד על הבסיס (בלי צבע)"
+                    ExportFormat.THREE_MF -> "הפורמט של תוכנות ההדפסה: מתוקן, במילימטרים, עומד על הבסיס"
                     ExportFormat.PLY -> "סריקות ו-MeshLab, צבע לכל קודקוד (בלי הטקסטורה)"
                 }, color = C.Sub, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,6 +307,57 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = C.Violet, unfocusedBorderColor = C.Stroke, focusedTextColor = C.Text,
     unfocusedTextColor = C.Text, cursorColor = C.Violet, focusedContainerColor = Color(0x14FFFFFF),
     unfocusedContainerColor = Color(0x0DFFFFFF))
+
+/** Print-readiness report: size, repairs, watertightness, wall thickness, and print exports. */
+@Composable
+private fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean,
+                         onShowThin: (Boolean) -> Unit, onExport: (ExportFormat) -> Unit) {
+    Section(title = "הדפסה בתלת־ממד") {
+        if (print == null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = C.Violet, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("בודק את המודל להדפסה…", color = C.Sub, fontSize = 13.sp)
+            }
+            return@Section
+        }
+        val r = print.report
+        fun mm(x: Float) = "%.0f".format(x)
+        PrintRow(true, "גודל: ${mm(r.sizeMm[0])} × ${mm(r.sizeMm[1])} × ${mm(r.sizeMm[2])} מ״מ",
+            "הצלע הארוכה ${mm(Printability.TARGET_MM)} מ״מ · נפח %.1f סמ״ק".format(r.volumeCm3))
+        PrintRow(r.watertight, if (r.watertight) "אטום ותקין להדפסה" else "המודל לא אטום לגמרי",
+            listOfNotNull(
+                r.nonManifoldBefore.takeIf { it > 0 }?.let { "תוקנו $it צלעות לא תקינות" },
+                r.holesFilled.takeIf { it > 0 }?.let { "נסגרו $it פתחים" },
+                r.floatersRemoved.takeIf { it > 0 }?.let { "הוסרו $it חלקים צפים" },
+                r.openEdgesAfter.takeIf { it > 0 }?.let { "נשארו $it צלעות פתוחות" },
+            ).joinToString(" · ").ifEmpty { "לא נדרש תיקון" })
+        val wallOk = r.minWallMm.isNaN() || r.minWallMm >= Printability.THIN_MM
+        PrintRow(wallOk, if (r.minWallMm.isNaN()) "עובי דפנות: לא נמדד" else "דופן מינימלית: %.1f מ״מ".format(r.minWallMm),
+            if (r.thinShare > 0f) "%.1f%% מהמשטח דק מ-%.0f מ״מ (באדום)".format(r.thinShare * 100, Printability.THIN_MM)
+            else "אין אזורים דקים מ-%.0f מ״מ".format(Printability.THIN_MM))
+        ToggleRow("הצג אזורים דקים", "אדום: פחות מ-1 מ״מ · כתום: 1–2 מ״מ", showThin, onShowThin)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GradientButton("3MF להדפסה", Modifier.weight(1f), Icons.Rounded.Share, enabled = !busy) { onExport(ExportFormat.THREE_MF) }
+            SoftButton("STL", Modifier.weight(0.7f), Icons.Rounded.Share, enabled = !busy) { onExport(ExportFormat.STL) }
+        }
+        Text("עומד על הבסיס, ציר Z למעלה, במילימטרים. 3MF נפתח ישירות ב-Bambu Studio, PrusaSlicer ו-Cura.",
+            color = C.Sub, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun PrintRow(ok: Boolean, title: String, detail: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(if (ok) Icons.Rounded.CheckCircle else Icons.Rounded.Warning, null,
+            tint = if (ok) C.Green else C.Amber, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(detail, color = C.Sub, fontSize = 12.sp)
+        }
+    }
+}
 
 @Composable
 fun ProjectsScreen() {

@@ -252,6 +252,8 @@ class FloatList {
     private var data = FloatArray(1 shl 16)
     var size = 0; private set
     fun add(x: Float) { if (size == data.size) data = data.copyOf(size * 2); data[size++] = x }
+    operator fun get(i: Int) = data[i]
+    operator fun set(i: Int, x: Float) { data[i] = x }
     fun toArray() = data.copyOf(size)
 }
 
