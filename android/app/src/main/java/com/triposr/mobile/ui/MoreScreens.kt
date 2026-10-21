@@ -311,7 +311,7 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 
 /** Print-readiness report: size, repairs, watertightness, wall thickness, and print exports. */
 @Composable
-private fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean,
+internal fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean,
                          onShowThin: (Boolean) -> Unit, onExport: (ExportFormat) -> Unit) {
     Section(title = "הדפסה בתלת־ממד") {
         if (print == null) {

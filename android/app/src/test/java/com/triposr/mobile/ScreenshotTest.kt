@@ -19,6 +19,7 @@ import com.triposr.mobile.ui.BottomNav
 import com.triposr.mobile.ui.CreateScreen
 import com.triposr.mobile.ui.DiagnosticsScreen
 import com.triposr.mobile.ui.HomeScreen
+import com.triposr.mobile.ui.PrintSection
 import com.triposr.mobile.ui.ProcessingScreen
 import com.triposr.mobile.ui.ProjectsScreen
 import com.triposr.mobile.ui.ResultScreen
@@ -156,6 +157,11 @@ class ScreenshotTest {
         AppState.originalMesh = m
         AppState.project = AppState.projects.first()
         shot("06_result") { ResultScreen() }
+    }
+
+    @Test fun print() {
+        val pm = Printability.prepare(sphere())
+        shot("12_print") { Column { PrintSection(pm, false, false, {}, {}) } }
     }
 
     @Test fun gallery() = shot("07_gallery", Screen.Projects) { ProjectsScreen() }
