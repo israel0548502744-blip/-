@@ -40,6 +40,37 @@ class Mesh(
         return Mesh(rot(positions), rot(normals), colors, indices).withTextureOf(this)
     }
 
+    /**
+     * OBJ + MTL + PNG in one ZIP (OBJ cannot embed a texture). Same layout Blender and MeshLab
+     * expect: model.obj references model.mtl, which references texture.png.
+     */
+    fun writeObjZip(out: OutputStream) {
+        val t = texturedArrays() ?: throw IllegalStateException("no texture")
+        val zip = java.util.zip.ZipOutputStream(out)
+        zip.putNextEntry(java.util.zip.ZipEntry("model.obj"))
+        val w = zip.bufferedWriter()
+        w.write("# TripoSR mobile\nmtllib model.mtl\nusemtl baked\n")
+        val n = t.positions.size / 3
+        for (v in 0 until n) w.write("v ${t.positions[v * 3]} ${t.positions[v * 3 + 1]} ${t.positions[v * 3 + 2]}\n")
+        // OBJ's v axis points up, glTF's (and our atlas') points down.
+        for (v in 0 until n) w.write("vt ${t.uvs[v * 2]} ${1f - t.uvs[v * 2 + 1]}\n")
+        for (v in 0 until n) w.write("vn ${t.normals[v * 3]} ${t.normals[v * 3 + 1]} ${t.normals[v * 3 + 2]}\n")
+        for (k in 0 until t.indices.size / 3) {
+            val a = t.indices[k * 3] + 1; val b = t.indices[k * 3 + 1] + 1; val c = t.indices[k * 3 + 2] + 1
+            w.write("f $a/$a/$a $b/$b/$b $c/$c/$c\n")
+        }
+        w.flush()
+        zip.closeEntry()
+        zip.putNextEntry(java.util.zip.ZipEntry("model.mtl"))
+        zip.write("newmtl baked\nKa 1 1 1\nKd 1 1 1\nKs 0 0 0\nillum 1\nmap_Kd texture.png\n".toByteArray())
+        zip.closeEntry()
+        zip.putNextEntry(java.util.zip.ZipEntry("texture.png"))
+        zip.write(texture!!.toPng())
+        zip.closeEntry()
+        zip.finish()
+        out.flush()
+    }
+
     fun writeObj(out: OutputStream) {
         val w = out.bufferedWriter()
         w.write("# TripoSR mobile\n")
@@ -75,7 +106,9 @@ class Mesh(
         val pngBytes = png?.size ?: 0
         val binSize = (pngOffset + pngBytes + 3) / 4 * 4
         val bin = ByteBuffer.allocate(binSize).order(ByteOrder.LITTLE_ENDIAN)
-        bin.asFloatBuffer().put(pos).put(nor).put(tex?.uvs ?: colors)
+        // glTF COLOR_0 is linear while TripoSR colors are sRGB like the input photo (a texture is
+        // declared sRGB by glTF, so it is written as is).
+        bin.asFloatBuffer().put(pos).put(nor).put(tex?.uvs ?: FloatArray(colors.size) { srgbToLinear(colors[it]) })
         bin.position(vecBytes * 2 + thirdBytes)
         bin.asIntBuffer().put(idx)
         if (png != null) { bin.position(pngOffset); bin.put(png) }
@@ -124,6 +157,11 @@ class Mesh(
         out.write(bin.array())
         out.flush()
     }
+}
+
+private fun srgbToLinear(c: Float): Float {
+    val v = c.coerceIn(0f, 1f)
+    return if (v <= 0.04045f) v / 12.92f else Math.pow(((v + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
 }
 
 /**

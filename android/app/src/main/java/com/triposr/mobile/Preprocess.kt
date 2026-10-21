@@ -91,6 +91,23 @@ object Preprocess {
         return out
     }
 
+    /**
+     * Inputs for [ImageCheck]: the cut-out's alpha at ≤ 256 px (only when there is a mask), and a
+     * full-resolution centre crop of the original for the pixel-noise test.
+     */
+    fun check(src: Bitmap, cut: Bitmap, masked: Boolean, info: SourceInfo): ImageCheck.Result {
+        val scale = 256f / maxOf(cut.width, cut.height)
+        val w = (cut.width * scale).toInt().coerceAtLeast(1); val h = (cut.height * scale).toInt().coerceAtLeast(1)
+        // A failed segmentation can keep almost every pixel, so trust [masked] rather than transparency.
+        val alpha = if (masked || hasTransparency(cut)) {
+            val small = Bitmap.createScaledBitmap(cut, w, h, true)
+            IntArray(w * h).also { small.getPixels(it, 0, w, 0, 0, w, h) }.map { Color.alpha(it) }.toIntArray()
+        } else null
+        val cw = minOf(src.width, 512); val ch = minOf(src.height, 512)
+        val crop = IntArray(cw * ch).also { src.getPixels(it, 0, cw, (src.width - cw) / 2, (src.height - ch) / 2, cw, ch) }
+        return ImageCheck.analyze(w, h, alpha, crop, src.width, src.height, info)
+    }
+
     fun toChw(bmp: Bitmap): FloatArray {
         val s = bmp.width
         val px = IntArray(s * s).also { bmp.getPixels(it, 0, s, 0, 0, s, s) }

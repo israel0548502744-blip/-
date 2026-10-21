@@ -118,6 +118,7 @@ class ScreenshotTest {
         AppState.job = null
         AppState.input = null
         AppState.framed = null
+        AppState.preview = null
     }
 
     @Test fun home() = shot("01_home", Screen.Home) { HomeScreen() }
@@ -127,6 +128,14 @@ class ScreenshotTest {
     @Test fun createWithImage() {
         AppState.input = sampleImage()
         shot("03_create_image") { CreateScreen({}, {}, {}) }
+    }
+
+    @Test fun createWithWarnings() {
+        val img = sampleImage(1)
+        AppState.input = img
+        AppState.preview = Preview(img, true, sampleImage(2), listOf(ImageIssue.FLAT, ImageIssue.BACKGROUND_FAILED))
+        shot("11_create_warnings") { CreateScreen({}, {}, {}) }
+        AppState.preview = null
     }
 
     @Test fun processing() {

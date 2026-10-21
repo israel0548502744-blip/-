@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 @Suppress("DEPRECATION")
                 intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { uri ->
-                    Actions.loadBitmap(this, uri)?.let { AppState.setImage(it); AppState.navigate(Screen.Create) }
+                    Actions.loadBitmap(this, uri)?.let { AppState.setImage(it, Actions.sourceInfo(this, uri)); AppState.navigate(Screen.Create) }
                 }
             }
             CreateWidget.ACTION_CREATE -> { AppState.startNew(); pendingPick = AppState.input == null }
@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
     private fun App() {
         val ctx = LocalContext.current
         val onImage: (Uri?) -> Unit = { uri ->
-            if (uri != null) Actions.loadBitmap(ctx, uri)?.let { AppState.setImage(it) }
+            if (uri != null) Actions.loadBitmap(ctx, uri)?.let { AppState.setImage(it, Actions.sourceInfo(ctx, uri)) }
                 ?: Actions.toast(ctx, "לא הצלחתי לפתוח את התמונה")
         }
         val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia(), onImage)

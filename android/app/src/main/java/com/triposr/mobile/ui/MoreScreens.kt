@@ -111,12 +111,25 @@ fun ResultScreen() {
     var reduce by remember { mutableFloatStateOf(0f) }
     var edited by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var exportTime by remember { mutableStateOf<String?>(null) }
+    val formats = ExportFormat.available(mesh)
+    if (format !in formats) format = ExportFormat.GLB
+
+    /** Runs [write] off the main thread and records how long the export took. */
+    suspend fun <T> timedExport(fmt: ExportFormat, write: () -> T): T {
+        val t0 = System.nanoTime()
+        val r = withContext(Dispatchers.IO) { write() }
+        val s = (System.nanoTime() - t0) / 1e9
+        CrashLog.log("Export ${fmt.name} in %.2fs (${mesh.triangleCount} triangles, texture ${mesh.texture?.size ?: 0}px)".format(s))
+        exportTime = "ייצוא ${fmt.label}: %.1f ש׳".format(s)
+        return r
+    }
 
     fun export(fmt: ExportFormat = format, action: (android.net.Uri) -> Unit) {
         busy = true
         scope.launch {
             try {
-                val uri = withContext(Dispatchers.IO) { Actions.exportToCache(ctx, mesh, fmt, project.name) }
+                val uri = timedExport(fmt) { Actions.exportToCache(ctx, mesh, fmt, project.name) }
                 action(uri)
             } catch (e: Throwable) {
                 CrashLog.error("export", e); Actions.toast(ctx, "הייצוא נכשל: ${e.message}")
@@ -159,6 +172,10 @@ fun ResultScreen() {
                 Chip("${"%,d".format(mesh.triangleCount)} פוליגונים")
                 Chip("${"%,d".format(mesh.vertexCount)} קודקודים")
                 Chip("%.1f שניות".format(project.seconds), C.Green)
+                if (project.geometrySeconds > 0) Chip("גאומטריה %.1f ש׳".format(project.geometrySeconds), C.Violet)
+                project.textureSeconds?.let { Chip("טקסטורה %.1f ש׳".format(it), C.Violet) }
+                if (mesh.texture != null) Chip("טקסטורה ${mesh.texture!!.size}px", C.Green)
+                exportTime?.let { Chip(it, C.Orange) }
                 Chip(project.backend, C.Orange)
             }
 
@@ -190,13 +207,14 @@ fun ResultScreen() {
             }
 
             Section(title = "ייצוא") {
-                Segmented(ExportFormat.entries.toList(), format, { it.label }, { format = it })
+                Segmented(formats, format, { it.label }, { format = it })
                 Text(when (format) {
                     ExportFormat.GLB -> if (mesh.texture != null) "מומלץ: עם הטקסטורה החדה, נפתח בכל צופה 3D ובאנדרואיד"
                         else "מומלץ: עם צבעים, נפתח בכל צופה 3D ובאנדרואיד"
-                    ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד)"
+                    ExportFormat.OBJ_ZIP -> "ZIP עם OBJ, MTL ו-PNG: הטקסטורה החדה ל-Blender ו-MeshLab"
+                    ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד, בלי הטקסטורה)"
                     ExportFormat.STL -> "להדפסה תלת־ממדית (בלי צבע)"
-                    ExportFormat.PLY -> "סריקות ו-MeshLab, עם צבעים"
+                    ExportFormat.PLY -> "סריקות ו-MeshLab, צבע לכל קודקוד (בלי הטקסטורה)"
                 }, color = C.Sub, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GradientButton("שתף מודל", Modifier.weight(1f), Icons.Rounded.Share, enabled = !busy) {
@@ -206,7 +224,7 @@ fun ResultScreen() {
                         busy = true
                         scope.launch {
                             try {
-                                val path = withContext(Dispatchers.IO) { Actions.saveToDownloads(ctx, mesh, format, project.name) }
+                                val path = timedExport(format) { Actions.saveToDownloads(ctx, mesh, format, project.name) }
                                 Actions.toast(ctx, "נשמר: $path")
                             } catch (e: Throwable) {
                                 CrashLog.error("save", e); Actions.toast(ctx, "השמירה נכשלה: ${e.message}")

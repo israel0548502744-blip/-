@@ -9,11 +9,21 @@ import java.nio.file.StandardOpenOption
 import kotlin.math.max
 import kotlin.math.sqrt
 
-enum class ExportFormat(val ext: String, val mime: String, val label: String) {
-    GLB("glb", "model/gltf-binary", "GLB"),
-    OBJ("obj", "text/plain", "OBJ"),
-    STL("stl", "model/stl", "STL"),
-    PLY("ply", "application/octet-stream", "PLY"),
+/**
+ * Export formats. Texture support: GLB embeds the baked texture; OBJ_ZIP carries it as
+ * OBJ + MTL + PNG; OBJ and PLY keep per-vertex colors only; STL has no color at all.
+ */
+enum class ExportFormat(val ext: String, val mime: String, val label: String, val keepsTexture: Boolean) {
+    GLB("glb", "model/gltf-binary", "GLB", true),
+    OBJ_ZIP("zip", "application/zip", "OBJ+PNG", true),
+    OBJ("obj", "text/plain", "OBJ", false),
+    STL("stl", "model/stl", "STL", false),
+    PLY("ply", "application/octet-stream", "PLY", false);
+
+    companion object {
+        /** OBJ_ZIP only makes sense when there is a texture to put in it. */
+        fun available(mesh: Mesh) = entries.filter { it != OBJ_ZIP || mesh.texture != null }
+    }
 }
 
 /** Mesh editing (smoothing, simplification), extra export formats and project storage. */
@@ -132,6 +142,7 @@ object MeshTools {
 
     fun write(mesh: Mesh, format: ExportFormat, out: OutputStream) = when (format) {
         ExportFormat.GLB -> mesh.writeGlb(out)
+        ExportFormat.OBJ_ZIP -> mesh.writeObjZip(out)
         ExportFormat.OBJ -> mesh.writeObj(out)
         ExportFormat.STL -> writeStl(mesh, out)
         ExportFormat.PLY -> writePly(mesh, out)

@@ -99,6 +99,7 @@ class TripoEngine(private val context: Context) : AutoCloseable {
         throw IllegalStateException("לא הצלחתי לטעון את המודל על אף מעבד: ${last?.message}", last)
     }
 
+    @Synchronized
     fun segmenter(): OrtSession = segmenter ?: run {
         val f = File(context.filesDir, SEGMENTER)
         if (!f.exists()) context.assets.open(SEGMENTER).use { i -> f.outputStream().use { i.copyTo(it) } }

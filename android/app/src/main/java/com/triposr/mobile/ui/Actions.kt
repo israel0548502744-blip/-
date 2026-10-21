@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.media.ExifInterface
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
@@ -16,6 +18,7 @@ import com.triposr.mobile.CrashLog
 import com.triposr.mobile.ExportFormat
 import com.triposr.mobile.Mesh
 import com.triposr.mobile.MeshTools
+import com.triposr.mobile.SourceInfo
 import java.io.File
 
 object Actions {
@@ -38,6 +41,17 @@ object Actions {
             if (longest > 1536) decoder.setTargetSampleSize(longest / 1024)
         }.copy(Bitmap.Config.ARGB_8888, false)
     }.onFailure { CrashLog.error("load image $uri", it) }.getOrNull()
+
+    /** File name and whether the file has camera EXIF, for the screenshot warning. */
+    fun sourceInfo(ctx: Context, uri: Uri): SourceInfo = runCatching {
+        val name = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+        val camera = ctx.contentResolver.openInputStream(uri)?.use {
+            val exif = ExifInterface(it)
+            exif.getAttribute(ExifInterface.TAG_MAKE) != null || exif.getAttribute(ExifInterface.TAG_MODEL) != null
+        } ?: false
+        SourceInfo(name, camera)
+    }.getOrDefault(SourceInfo())
 
     fun cameraUri(ctx: Context): Uri {
         val f = File(ctx.cacheDir, "camera/photo.jpg").apply { parentFile?.mkdirs() }

@@ -51,6 +51,9 @@ data class JobState(
         }
 }
 
+/** What the model will be given: the 512 px frame after background removal, and warnings about it. */
+class Preview(val source: Bitmap, val removeBackground: Boolean, val framed: Bitmap, val issues: List<ImageIssue>)
+
 data class Project(
     val id: String,
     val name: String,
@@ -60,7 +63,13 @@ data class Project(
     val seconds: Double,
     val vertices: Int,
     val triangles: Int,
+    /** Seconds per pipeline stage (Stage names), for the result screen and diagnostics. */
+    val timings: Map<String, Double> = emptyMap(),
 ) {
+    /** Image -> mesh with vertex colors (encode, density field, surface, colors). */
+    val geometrySeconds: Double get() = listOf(Stage.ENCODE, Stage.FIELD, Stage.SURFACE, Stage.COLOR).sumOf { timings[it.name] ?: 0.0 }
+    val textureSeconds: Double? get() = timings[Stage.TEXTURE.name]
+
     fun dir(ctx: Context) = File(File(ctx.filesDir, "projects"), id)
     fun thumb(ctx: Context): Bitmap? = File(dir(ctx), "thumb.png").takeIf { it.exists() }
         ?.let { BitmapFactory.decodeFile(it.absolutePath) }
@@ -83,6 +92,10 @@ object AppState {
 
     var input by mutableStateOf<Bitmap?>(null)
     var framed by mutableStateOf<Bitmap?>(null)
+    var preview by mutableStateOf<Preview?>(null)
+    var previewBusy by mutableStateOf(false)
+    private var sourceInfo = SourceInfo()
+    private var previewJob: Job? = null
     var job by mutableStateOf<JobState?>(null)
     var project by mutableStateOf<Project?>(null)
     var mesh by mutableStateOf<Mesh?>(null)
@@ -133,9 +146,47 @@ object AppState {
         return true
     }
 
-    fun setImage(bmp: Bitmap) {
+    fun setImage(bmp: Bitmap, info: SourceInfo = SourceInfo()) {
         input = bmp
         framed = null
+        preview = null
+        sourceInfo = info
+        refreshPreview(Settings.removeBackground(app))
+    }
+
+    @Synchronized
+    private fun engine(): TripoEngine = engine ?: TripoEngine(app).also { engine = it }
+
+    /**
+     * Runs background removal and framing for the current image in the background, so the user
+     * sees what the model will get (and any warnings) before starting. [start] reuses the result.
+     */
+    fun refreshPreview(removeBackground: Boolean) {
+        val img = input ?: return
+        val current = preview
+        if (current != null && current.source === img && current.removeBackground == removeBackground) return
+        previewJob?.cancel()
+        previewBusy = true
+        previewJob = scope.launch {
+            val p = runCatching { makePreview(img, removeBackground) }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) CrashLog.error("preview", it) }
+                .getOrNull()
+            withContext(Dispatchers.Main) {
+                if (input === img && p != null) preview = p
+                if (input === img) previewBusy = false
+            }
+        }
+    }
+
+    private fun makePreview(img: Bitmap, removeBackground: Boolean): Preview {
+        val t0 = System.nanoTime()
+        val cut = if (removeBackground) Preprocess.removeBackground(img, engine().segmenter())
+        else img.copy(Bitmap.Config.ARGB_8888, false)
+        val framed = Preprocess.frameForeground(cut)
+        val check = Preprocess.check(img, cut, removeBackground, sourceInfo)
+        CrashLog.log("Preview in %.2fs: removeBg=$removeBackground issues=${check.issues} ".format((System.nanoTime() - t0) / 1e9) +
+            check.stats.entries.joinToString { "%s=%.3f".format(it.key, it.value) })
+        return Preview(img, removeBackground, framed, check.issues)
     }
 
     fun start(choice: Backend?, quality: Quality, removeBackground: Boolean, smooth: Boolean) {
@@ -160,7 +211,7 @@ object AppState {
                 }
                 val chain = Capabilities.chain(app, choice)
                 CrashLog.log("Backend chain: $chain (${Capabilities.describe(app)})")
-                val eng = engine ?: TripoEngine(app).also { engine = it }
+                val eng = engine()
                 eng.load(chain, onStatus = { stage(Stage.LOAD, 0.5f, it) }, onAttempt = { b ->
                     // Written synchronously: if the process dies inside native code we find it on next launch.
                     prefs().edit().putString("active_backend", b.name).commit()
@@ -168,10 +219,16 @@ object AppState {
                 })
 
                 stage(Stage.SEGMENT, 0f)
-                val cut = if (removeBackground) Preprocess.removeBackground(image, eng.segmenter())
-                else image.copy(Bitmap.Config.ARGB_8888, false)
-                val frame = Preprocess.frameForeground(cut)
+                val segStart = System.nanoTime()
+                val ready = preview?.takeIf { it.source === image && it.removeBackground == removeBackground }
+                val frame = ready?.framed ?: run {
+                    val cut = if (removeBackground) Preprocess.removeBackground(image, eng.segmenter())
+                    else image.copy(Bitmap.Config.ARGB_8888, false)
+                    Preprocess.frameForeground(cut)
+                }
                 framed = frame
+                val segSeconds = (System.nanoTime() - segStart) / 1e9
+                CrashLog.log("Frame ${if (ready != null) "from preview" else "computed"} in %.2fs, warnings=${ready?.issues}".format(segSeconds))
 
                 val t0 = System.nanoTime()
                 // Texture baking costs one decoder pass per texel: 4M texels on NPU/GPU, 1M on the CPU.
@@ -185,14 +242,20 @@ object AppState {
                     cancelled = { cancelRequested })
                 val seconds = (System.nanoTime() - t0) / 1e9
 
+                val timings = LinkedHashMap<String, Double>()
+                timings[Stage.SEGMENT.name] = segSeconds
+                for ((s, t) in out.timings) timings[s.name] = t
                 val p = saveProject(out.mesh, frame, eng.encoderBackend, quality,
-                    (System.currentTimeMillis() - job!!.startedAt) / 1000.0)
-                CrashLog.log("Job done in %.1fs (pipeline %.1fs), ${out.mesh.triangleCount} triangles".format(p.seconds, seconds))
+                    (System.currentTimeMillis() - job!!.startedAt) / 1000.0, timings)
+                CrashLog.log(("Job done in %.1fs (pipeline %.1fs): geometry %.2fs, texture %s, ${out.mesh.triangleCount} triangles, " +
+                    "texture ${out.mesh.texture?.size ?: 0}px").format(p.seconds, seconds, p.geometrySeconds,
+                    p.textureSeconds?.let { "%.2fs".format(it) } ?: "off"))
                 withContext(Dispatchers.Main) {
                     originalMesh = out.mesh
                     mesh = out.mesh
                     project = p
                     input = null // the next "create" starts from a fresh image
+                    preview = null
                     job = job?.copy(done = true, stageProgress = 1f, status = "המודל מוכן!")
                     if (screen == Screen.Processing) showResult()
                 }
@@ -245,10 +308,11 @@ object AppState {
 
     private fun projectsDir() = File(app.filesDir, "projects").apply { mkdirs() }
 
-    private fun saveProject(mesh: Mesh, thumb: Bitmap, backend: Backend, quality: Quality, seconds: Double): Project {
+    private fun saveProject(mesh: Mesh, thumb: Bitmap, backend: Backend, quality: Quality, seconds: Double,
+                            timings: Map<String, Double>): Project {
         val id = System.currentTimeMillis().toString()
         val p = Project(id, "מודל ${projects.size + 1}", System.currentTimeMillis(), backend.short, quality.label,
-            seconds, mesh.vertexCount, mesh.triangleCount)
+            seconds, mesh.vertexCount, mesh.triangleCount, timings)
         val dir = p.dir(app).apply { mkdirs() }
         MeshTools.save(mesh, File(dir, "mesh.bin"))
         File(dir, "thumb.png").outputStream().use {
@@ -265,6 +329,7 @@ object AppState {
             put("name", p.name); put("created", p.created); put("backend", p.backend)
             put("quality", p.quality); put("seconds", p.seconds)
             put("vertices", p.vertices); put("triangles", p.triangles)
+            put("timings", JSONObject(p.timings))
         }.toString())
     }
 
@@ -273,8 +338,10 @@ object AppState {
         val list = projectsDir().listFiles()?.mapNotNull { dir ->
             runCatching {
                 val j = JSONObject(File(dir, "meta.json").readText())
+                val t = j.optJSONObject("timings")
+                val timings = t?.keys()?.asSequence()?.associateWith { t.getDouble(it) } ?: emptyMap()
                 Project(dir.name, j.getString("name"), j.getLong("created"), j.optString("backend"),
-                    j.optString("quality"), j.optDouble("seconds"), j.optInt("vertices"), j.optInt("triangles"))
+                    j.optString("quality"), j.optDouble("seconds"), j.optInt("vertices"), j.optInt("triangles"), timings)
             }.getOrNull()
         }?.sortedByDescending { it.created } ?: emptyList()
         synchronized(projects) { projects.clear(); projects.addAll(list) }

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -79,6 +81,7 @@ import com.triposr.mobile.AppState
 import com.triposr.mobile.Backend
 import com.triposr.mobile.Capabilities
 import com.triposr.mobile.CrashLog
+import com.triposr.mobile.ImageIssue
 import com.triposr.mobile.ModelStore
 import com.triposr.mobile.Project
 import com.triposr.mobile.Quality
@@ -466,7 +469,9 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
     var sourceMenu by remember { mutableStateOf(false) }
+    var showOriginal by remember { mutableStateOf(false) }
     val image = AppState.input
+    val preview = AppState.preview?.takeIf { it.source === image }
 
     Column(Modifier.fillMaxSize()) {
         TopBar("תמונה לתלת־ממד", onBack = { AppState.back() })
@@ -478,7 +483,24 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                     contentAlignment = Alignment.Center,
                 ) {
                     if (image != null) {
-                        Image(image.asImageBitmap(), null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(14.dp))
+                        // By default show what the model will get: the cut-out framed on grey.
+                        val shown = if (showOriginal || preview == null) image else preview.framed
+                        Image(shown.asImageBitmap(), null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(14.dp))
+                        if (AppState.previewBusy) Row(Modifier.align(Alignment.Center).glass(CircleShape, strong = true)
+                            .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), color = C.Violet, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (removeBg) "מסיר רקע…" else "מכין תצוגה…", color = C.Text, fontSize = 12.sp)
+                        }
+                        if (preview != null) Row(Modifier.align(Alignment.BottomCenter).padding(10.dp).glass(CircleShape, strong = true)
+                            .padding(3.dp)) {
+                            for ((label, original) in listOf("מה שהמודל רואה" to false, "מקור" to true)) {
+                                val on = showOriginal == original
+                                Text(label, color = if (on) Color.White else C.Sub, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(CircleShape).then(if (on) Modifier.background(C.Primary) else Modifier)
+                                        .clickable { showOriginal = original }.padding(horizontal = 12.dp, vertical = 6.dp))
+                            }
+                        }
                         Row(Modifier.align(Alignment.TopStart).padding(12.dp).glass(CircleShape, strong = true)
                             .padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.AddPhotoAlternate, null, tint = C.Text, modifier = Modifier.size(16.dp))
@@ -500,6 +522,8 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 }
             }
 
+            preview?.issues?.forEach { IssueCard(it) }
+
             Row(Modifier.horizontalScroll(rememberScrollState()).enter(1), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (tip in listOf("אובייקט אחד במרכז", "תאורה טובה", "רקע פשוט", "האובייקט שלם", "זווית מעט מלמעלה")) {
                     Chip(tip, C.Sub)
@@ -515,7 +539,7 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
             }
             Section(Modifier.enter(4)) {
                 ToggleRow("הסרת רקע אוטומטית", "מומלץ, אלא אם התמונה כבר בלי רקע", removeBg) {
-                    removeBg = it; Settings.setRemoveBackground(ctx, it)
+                    removeBg = it; Settings.setRemoveBackground(ctx, it); AppState.refreshPreview(it)
                 }
                 ToggleRow("החלקת משטח", "מסיר מדרגות קטנות ושומר על הצורה", smooth) {
                     smooth = it; Settings.setSmooth(ctx, it)
@@ -532,6 +556,19 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 enabled = image != null && status is ModelStore.Status.Ready && !AppState.isRunning) {
                 AppState.start(backend, quality, removeBg, smooth)
             }
+        }
+    }
+}
+
+/** A non-blocking warning about the chosen image. */
+@Composable
+fun IssueCard(issue: ImageIssue) {
+    Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp)).padding(14.dp), verticalAlignment = Alignment.Top) {
+        Icon(Icons.Rounded.Warning, null, tint = C.Amber, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(issue.title, color = C.Amber, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(issue.detail, color = C.Sub, fontSize = 12.sp)
         }
     }
 }
