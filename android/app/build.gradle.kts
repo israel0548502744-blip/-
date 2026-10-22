@@ -73,6 +73,8 @@ android {
 }
 
 dependencies {
+    // QR code encoder for the QR plate (Apache-2.0).
+    implementation("com.google.zxing:core:3.5.3")
     // ONNX Runtime with the Qualcomm QNN execution provider (pulls in com.qualcomm.qti:qnn-runtime).
     implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.29.0")
     // QNN libraries matching the QAIRT version (2.51) that compiles the NPU pack in CI

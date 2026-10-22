@@ -78,6 +78,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.triposr.mobile.AppState
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Terrain
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import com.triposr.mobile.Extras
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -208,6 +216,14 @@ fun HomeScreen() {
                 Modifier.enter(i++), onClick = { AppState.startNew() }) {
                 val last = AppState.projects.firstOrNull()
                 PreviewPanel(last?.let { rememberThumb(it) }, if (last != null) 1f else 0f, last?.name ?: "התחל")
+            }
+        }
+        FeatureCard(Icons.Rounded.Layers, "ליתופן, תבליט ו-QR", "מוצרי הדפסה מתמונה או מקישור",
+            Modifier.enter(i++), onClick = { AppState.navigate(Screen.Extra) }) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Icons.Rounded.Lightbulb, 40.dp, C.Primary)
+                IconTile(Icons.Rounded.Terrain, 40.dp, C.Accent)
+                IconTile(Icons.Rounded.QrCode2, 40.dp, C.Primary)
             }
         }
         FeatureCard(Icons.Rounded.GridView, "הגלריה שלי", "${AppState.projects.size} מודלים שמורים",
@@ -477,6 +493,8 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
     var sourceMenu by remember { mutableStateOf(false) }
     var showOriginal by remember { mutableStateOf(false) }
+    var tapMode by remember { mutableStateOf(false) }
+    val tapAvailable = rememberModelStatus(Extras.TAP.pack) is ModelStore.Status.Ready
     val image = AppState.input
     val preview = AppState.preview?.takeIf { it.source === image }
 
@@ -486,10 +504,32 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.enter(0)) {
                 Box(
-                    Modifier.fillMaxWidth().height(280.dp).glass(RoundedCornerShape(28.dp)).pressable { sourceMenu = true },
+                    Modifier.fillMaxWidth().height(280.dp).glass(RoundedCornerShape(28.dp))
+                        .then(if (tapMode && image != null) Modifier else Modifier.pressable { sourceMenu = true }),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (image != null) {
+                    if (image != null && tapMode && preview != null) {
+                        // Tap-to-select: taps land on the work image; outside the selection is dimmed.
+                        val shown = preview.selection ?: preview.work
+                        Image(shown.asImageBitmap(), null, contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize().padding(14.dp).pointerInput(shown) {
+                                detectTapGestures { o ->
+                                    val sc = minOf(size.width / shown.width.toFloat(), size.height / shown.height.toFloat())
+                                    val x = (o.x - (size.width - shown.width * sc) / 2) / sc
+                                    val y = (o.y - (size.height - shown.height * sc) / 2) / sc
+                                    if (x in 0f..shown.width.toFloat() && y in 0f..shown.height.toFloat()) AppState.tap(x, y)
+                                }
+                            })
+                        if (AppState.tapPoints.isEmpty() && !AppState.previewBusy) Text("גע באובייקט שתרצה", color = C.Text, fontSize = 13.sp,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).glass(CircleShape, strong = true)
+                                .padding(horizontal = 12.dp, vertical = 6.dp))
+                        if (AppState.previewBusy) Row(Modifier.align(Alignment.Center).glass(CircleShape, strong = true)
+                            .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), color = C.Violet, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("בוחר…", color = C.Text, fontSize = 12.sp)
+                        }
+                    } else if (image != null) {
                         // By default show what the model will get: the cut-out framed on grey.
                         val shown = if (showOriginal || preview == null) image else preview.framed
                         Image(shown.asImageBitmap(), null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(14.dp))
@@ -529,6 +569,12 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 }
             }
 
+            if (tapAvailable && image != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SoftButton(if (tapMode) "סיום בחירה" else "בחר אובייקט בנגיעה", Modifier.weight(1f), Icons.Rounded.TouchApp) {
+                    tapMode = !tapMode
+                }
+                if (AppState.tapPoints.isNotEmpty()) SoftButton("נקה", Modifier.weight(0.5f)) { AppState.clearTaps() }
+            }
             preview?.issues?.forEach { IssueCard(it) }
 
             Row(Modifier.horizontalScroll(rememberScrollState()).enter(1), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

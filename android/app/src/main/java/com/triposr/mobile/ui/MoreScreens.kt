@@ -121,12 +121,14 @@ fun ResultScreen() {
     var print by remember { mutableStateOf<PrintModel?>(null) }
     var thinPreview by remember { mutableStateOf<Mesh?>(null) }
     var showThin by remember { mutableStateOf(false) }
-    LaunchedEffect(mesh) {
+    var baseCut by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(mesh, baseCut) {
         print = null; thinPreview = null; showThin = false
+        Printability.baseCutMm = baseCut
         runCatching {
             withContext(Dispatchers.Default) {
                 val t0 = System.nanoTime()
-                Printability.prepared(mesh).also {
+                Printability.prepared(mesh, baseCut).also {
                     CrashLog.log("Print check in %.2fs: watertight=${it.report.watertight} minWall=%.2fmm".format(
                         (System.nanoTime() - t0) / 1e9, it.report.minWallMm))
                 }
@@ -227,7 +229,7 @@ fun ResultScreen() {
                 }
             }
 
-            PrintSection(print, showThin, busy,
+            PrintSection(print, showThin, busy, baseCut, onBaseCut = { baseCut = it },
                 onShowThin = { on ->
                     val pm = print
                     if (on && thinPreview == null && pm != null) thinPreview = Printability.thicknessPreview(pm)
@@ -311,8 +313,9 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 
 /** Print-readiness report: size, repairs, watertightness, wall thickness, and print exports. */
 @Composable
-internal fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean,
-                         onShowThin: (Boolean) -> Unit, onExport: (ExportFormat) -> Unit) {
+internal fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean, baseCut: Float = 0f,
+                         onBaseCut: (Float) -> Unit = {}, onShowThin: (Boolean) -> Unit, onExport: (ExportFormat) -> Unit) {
+    var cutDraft by remember(baseCut) { mutableFloatStateOf(if (baseCut > 0f) baseCut else 3f) }
     Section(title = "הדפסה בתלת־ממד") {
         if (print == null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -338,6 +341,12 @@ internal fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean,
             if (r.thinShare > 0f) "%.1f%% מהמשטח דק מ-%.0f מ״מ (באדום)".format(r.thinShare * 100, Printability.THIN_MM)
             else "אין אזורים דקים מ-%.0f מ״מ".format(Printability.THIN_MM))
         ToggleRow("הצג אזורים דקים", "אדום: פחות מ-1 מ״מ · כתום: 1–2 מ״מ", showThin, onShowThin)
+        ToggleRow("בסיס שטוח", "חותך את התחתית כדי שהמודל יעמוד יציב על המגש", baseCut > 0f) { on -> onBaseCut(if (on) cutDraft else 0f) }
+        if (baseCut > 0f) {
+            Text("גובה החיתוך: %.0f מ״מ".format(cutDraft), color = C.Text, fontSize = 13.sp)
+            Slider(cutDraft, { cutDraft = it.roundToInt().toFloat() }, valueRange = 1f..20f,
+                onValueChangeFinished = { onBaseCut(cutDraft) }, colors = sliderColors())
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GradientButton("3MF להדפסה", Modifier.weight(1f), Icons.Rounded.Share, enabled = !busy) { onExport(ExportFormat.THREE_MF) }
             SoftButton("STL", Modifier.weight(0.7f), Icons.Rounded.Share, enabled = !busy) { onExport(ExportFormat.STL) }
@@ -435,6 +444,7 @@ fun SettingsScreen() {
                 if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל · ${ModelStore.sizeOnDisk(ctx) shr 20} MB",
                     Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
             }
+            ExtrasSection()
             Section(title = "ברירות מחדל") {
                 Text("מעבד", color = C.Sub, fontSize = 13.sp)
                 BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }

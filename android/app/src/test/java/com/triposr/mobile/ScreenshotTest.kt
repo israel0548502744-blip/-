@@ -161,8 +161,10 @@ class ScreenshotTest {
 
     @Test fun print() {
         val pm = Printability.prepare(sphere())
-        shot("12_print") { Column { PrintSection(pm, false, false, {}, {}) } }
+        shot("12_print") { Column { PrintSection(pm, false, false, baseCut = 3f, onShowThin = {}, onExport = {}) } }
     }
+
+    @Test fun extras() = shot("13_extra") { com.triposr.mobile.ui.ExtraScreen() }
 
     @Test fun gallery() = shot("07_gallery", Screen.Projects) { ProjectsScreen() }
 

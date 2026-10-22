@@ -25,6 +25,7 @@ class PrintReport(
     val minWallMm: Float,             // 2nd percentile of sampled wall thickness (robust minimum)
     val thinShare: Float,             // share of sampled points thinner than [Printability.THIN_MM]
     val triangles: Int,
+    val baseCutMm: Float = 0f,        // how much was cut off the bottom for a flat base
 )
 
 /** A print-ready copy of a mesh: millimetres, Z up, standing on z = 0, centred on x/y. */
@@ -42,17 +43,22 @@ object Printability {
     /** Walls thinner than this are flagged (two 0.4 mm nozzle perimeters plus margin). */
     const val THIN_MM = 1.0f
 
-    @Volatile private var cache: Pair<Mesh, PrintModel>? = null
+    private class Key(val mesh: Mesh, val baseCutMm: Float)
+    @Volatile private var cache: Pair<Key, PrintModel>? = null
+    /** Flat-base cut used by exports; set from the result screen. */
+    @Volatile var baseCutMm = 0f
 
     /** [prepare] for the default size, remembered for the last mesh (the result screen and exports share it). */
-    fun prepared(src: Mesh): PrintModel {
-        cache?.let { (m, pm) -> if (m === src) return pm }
-        return prepare(src).also { cache = src to it }
+    fun prepared(src: Mesh, cut: Float = baseCutMm): PrintModel {
+        cache?.let { (k, pm) -> if (k.mesh === src && k.baseCutMm == cut) return pm }
+        return prepare(src, baseCutMm = cut).also { cache = Key(src, cut) to it }
     }
 
-    fun prepare(src: Mesh, targetMm: Float = TARGET_MM): PrintModel {
-        var pos = src.positions.copyOf()
-        var tris = src.indices.copyOf()
+    fun prepare(src: Mesh, targetMm: Float = TARGET_MM, baseCutMm: Float = 0f): PrintModel {
+        // 0. Merge vertices at identical positions (colour or UV seams split them).
+        val welded = weldCompact(src.positions, src.indices)
+        var pos = welded.first
+        var tris = welded.second
 
         // 1. Degenerate and duplicate triangles.
         val before = tris.size / 3
@@ -72,26 +78,38 @@ object Printability {
         val filled = fillHoles(pos, tris)
         pos = filled.positions; tris = filled.indices
 
-        // 5. Outward orientation (positive signed volume).
-        if (signedVolume(pos, tris) < 0) for (t in 0 until tris.size / 3) {
-            val a = tris[t * 3 + 1]; tris[t * 3 + 1] = tris[t * 3 + 2]; tris[t * 3 + 2] = a
-        }
+        // 5. Outward orientation, per connected part (a part can come out inside-out on its own).
+        orientParts(pos, tris)
 
         // 6. Y-up (glTF) -> Z-up (slicers), scale to millimetres, put on the bed.
         val nv = pos.size / 3
-        val out = FloatArray(pos.size)
+        val zUp = FloatArray(pos.size)
         for (v in 0 until nv) {
-            out[v * 3] = pos[v * 3]; out[v * 3 + 1] = -pos[v * 3 + 2]; out[v * 3 + 2] = pos[v * 3 + 1]
+            zUp[v * 3] = pos[v * 3]; zUp[v * 3 + 1] = -pos[v * 3 + 2]; zUp[v * 3 + 2] = pos[v * 3 + 1]
         }
         val lo = FloatArray(3) { Float.MAX_VALUE }; val hi = FloatArray(3) { -Float.MAX_VALUE }
-        for (v in 0 until nv) for (c in 0..2) { lo[c] = min(lo[c], out[v * 3 + c]); hi[c] = max(hi[c], out[v * 3 + c]) }
+        for (v in 0 until nv) for (c in 0..2) { lo[c] = min(lo[c], zUp[v * 3 + c]); hi[c] = max(hi[c], zUp[v * 3 + c]) }
         val longest = max(hi[0] - lo[0], max(hi[1] - lo[1], hi[2] - lo[2])).coerceAtLeast(1e-6f)
         val s = targetMm / longest
         val cx = (lo[0] + hi[0]) / 2; val cy = (lo[1] + hi[1]) / 2
         for (v in 0 until nv) {
-            out[v * 3] = (out[v * 3] - cx) * s; out[v * 3 + 1] = (out[v * 3 + 1] - cy) * s; out[v * 3 + 2] = (out[v * 3 + 2] - lo[2]) * s
+            zUp[v * 3] = (zUp[v * 3] - cx) * s; zUp[v * 3 + 1] = (zUp[v * 3 + 1] - cy) * s; zUp[v * 3 + 2] = (zUp[v * 3 + 2] - lo[2]) * s
         }
         val size = FloatArray(3) { (hi[it] - lo[it]) * s }
+
+        // 7. Optional flat base: cut everything below baseCutMm and cap the cut.
+        var outPos = zUp
+        val cut = baseCutMm.coerceIn(0f, size[2] * 0.5f)
+        if (cut > 0f) {
+            val r = cutBelow(zUp, tris, cut)
+            outPos = r.first; tris = r.second
+            for (v in 0 until outPos.size / 3) outPos[v * 3 + 2] -= cut
+            size[2] -= cut
+        }
+        // 8. Drop vertices no triangle uses (cut-away or floater leftovers): slicers place the
+        // object by its vertices, so an unused one below the base would lift the print off the bed.
+        val compact = dropUnused(outPos, tris)
+        val out = compact.first; tris = compact.second
 
         val normals = MeshTools.normals(out, tris)
         // Judge the result the way a slicer reads an STL: vertices merged by position.
@@ -105,7 +123,7 @@ object Printability {
 
         val report = PrintReport(size, degenerate, floaters, nmBefore, edges.nonManifold, filled.holes, edges.open,
             edges.open == 0 && edges.nonManifold == 0 && edges.misoriented == 0,
-            abs(signedVolume(out, tris)) / 1000.0, minWall, thin, tris.size / 3)
+            abs(signedVolume(out, tris)) / 1000.0, minWall, thin, tris.size / 3, cut)
         return PrintModel(mesh, report, thickness)
     }
 
@@ -131,6 +149,212 @@ object Printability {
             dir[k] != 0 -> mis++
         }
         return EdgeStats(open, nm, mis)
+    }
+
+    private fun dropUnused(p: FloatArray, tris: IntArray): Pair<FloatArray, IntArray> {
+        val map = IntArray(p.size / 3) { -1 }
+        val out = FloatList()
+        val t = IntArray(tris.size) { i ->
+            val v = tris[i]
+            if (map[v] < 0) { map[v] = out.size / 3; out.add(p[v * 3]); out.add(p[v * 3 + 1]); out.add(p[v * 3 + 2]) }
+            map[v]
+        }
+        return out.toArray() to t
+    }
+
+    /** Vertices at exactly the same position merged into one. */
+    private fun weldCompact(p: FloatArray, tris: IntArray): Pair<FloatArray, IntArray> {
+        val ids = HashMap<Triple<Float, Float, Float>, Int>(p.size / 3)
+        val out = FloatList()
+        val map = IntArray(p.size / 3) { v ->
+            ids.getOrPut(Triple(p[v * 3], p[v * 3 + 1], p[v * 3 + 2])) {
+                out.add(p[v * 3]); out.add(p[v * 3 + 1]); out.add(p[v * 3 + 2]); ids.size
+            }
+        }
+        return out.toArray() to IntArray(tris.size) { map[tris[it]] }
+    }
+
+    // ---------------------------------------------------------------- flat base
+
+    /**
+     * Removes everything below z = [zc] and closes the cut with flat caps (one per cross-section,
+     * holes included), facing down. Expects a closed, outward-oriented mesh in Z-up space.
+     */
+    fun cutBelow(p: FloatArray, tris: IntArray, zCut: Float): Pair<FloatArray, IntArray> {
+        // Keep the plane off existing vertices so every cut point comes from exactly one edge.
+        var zc = zCut
+        while ((0 until p.size / 3).any { p[it * 3 + 2] == zc }) zc += 1e-4f
+        val pos = FloatList(); for (x in p) pos.add(x)
+        val out = IntList()
+        val cross = HashMap<Long, Int>()
+        fun up(v: Int) = p[v * 3 + 2] > zc
+        fun at(a: Int, b: Int): Int = cross.getOrPut(key(a, b)) {
+            val za = p[a * 3 + 2]; val zb = p[b * 3 + 2]; val t = (zc - za) / (zb - za)
+            for (c in 0..1) pos.add(p[a * 3 + c] + t * (p[b * 3 + c] - p[a * 3 + c]))
+            pos.add(zc)
+            pos.size / 3 - 1
+        }
+        for (t in 0 until tris.size / 3) {
+            val v = intArrayOf(tris[t * 3], tris[t * 3 + 1], tris[t * 3 + 2])
+            val n = v.count { up(it) }
+            when (n) {
+                3 -> { out.add(v[0]); out.add(v[1]); out.add(v[2]) }
+                1 -> { // rotate so the vertex above comes first (keeps winding)
+                    val i = v.indexOfFirst { up(it) }
+                    val a = v[i]; val b = v[(i + 1) % 3]; val c = v[(i + 2) % 3]
+                    out.add(a); out.add(at(a, b)); out.add(at(c, a))
+                }
+                2 -> { // rotate so the vertex below comes last
+                    val i = v.indexOfFirst { !up(it) }
+                    val c = v[i]; val a = v[(i + 1) % 3]; val b = v[(i + 2) % 3]
+                    val bc = at(b, c); val ca = at(c, a)
+                    out.add(a); out.add(b); out.add(bc); out.add(a); out.add(bc); out.add(ca)
+                }
+            }
+        }
+        val cutTris = out.toArray()
+        val pts = pos.toArray()
+        val loops = boundaryLoops(cutTris)
+        for (tri in capLoops(pts, loops, pos)) out.add(tri)
+        return pos.toArray() to out.toArray()
+    }
+
+    private fun boundaryLoops(tris: IntArray): List<IntArray> {
+        val count = HashMap<Long, Int>(tris.size)
+        for (t in 0 until tris.size / 3) for (e in 0..2) {
+            val k = key(tris[t * 3 + e], tris[t * 3 + (e + 1) % 3]); count[k] = (count[k] ?: 0) + 1
+        }
+        val next = HashMap<Int, Int>()
+        for (t in 0 until tris.size / 3) for (e in 0..2) {
+            val a = tris[t * 3 + e]; val b = tris[t * 3 + (e + 1) % 3]
+            if (count[key(a, b)] == 1) next[a] = b
+        }
+        val loops = ArrayList<IntArray>()
+        val seen = HashSet<Int>()
+        for (s in next.keys) {
+            if (s in seen) continue
+            val l = IntList(); var v = s
+            while (v !in seen) { seen += v; l.add(v); v = next[v] ?: break }
+            if (v == s && l.size >= 3) loops += l.toArray()
+        }
+        return loops
+    }
+
+    private fun area(p: FloatArray, l: IntArray): Double {
+        var a = 0.0
+        for (i in l.indices) {
+            val u = l[i]; val w = l[(i + 1) % l.size]
+            a += p[u * 3].toDouble() * p[w * 3 + 1] - p[w * 3].toDouble() * p[u * 3 + 1]
+        }
+        return a / 2
+    }
+
+    private fun inside(p: FloatArray, l: IntArray, x: Float, y: Float): Boolean {
+        var c = false
+        var j = l.size - 1
+        for (i in l.indices) {
+            val xi = p[l[i] * 3]; val yi = p[l[i] * 3 + 1]; val xj = p[l[j] * 3]; val yj = p[l[j] * 3 + 1]
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c
+            j = i
+        }
+        return c
+    }
+
+    /** Triangulates the cut outlines (outer loops with their holes) into downward-facing caps. */
+    private fun capLoops(p: FloatArray, loops: List<IntArray>, pos: FloatList): List<Int> {
+        if (loops.isEmpty()) return emptyList()
+        val areas = loops.map { area(p, it) }
+        val outerSign = Math.signum(areas[areas.indices.maxBy { abs(areas[it]) }])
+        val outers = loops.indices.filter { Math.signum(areas[it]) == outerSign }
+        val holes = loops.indices.filter { Math.signum(areas[it]) != outerSign }
+        val result = ArrayList<Int>()
+        for (o in outers) {
+            // Work in counter-clockwise order for the outer loop and clockwise for its holes.
+            var poly = loops[o].let { if (areas[o] < 0) it.reversedArray() else it }.toMutableList()
+            val mine = holes.filter { h ->
+                val v = loops[h][0]
+                inside(p, loops[o], p[v * 3], p[v * 3 + 1]) &&
+                    outers.none { o2 -> o2 != o && abs(areas[o2]) < abs(areas[o]) && inside(p, loops[o2], p[v * 3], p[v * 3 + 1]) }
+            }.map { h -> loops[h].let { if (areas[h] > 0) it.reversedArray() else it } }
+                .sortedByDescending { l -> l.maxOf { p[it * 3] } }
+            for (hole in mine) poly = bridge(p, poly, hole)
+            result += earClip(p, poly, pos)
+        }
+        // Ears come out counter-clockwise seen from above (+z); the cap must face down, so flip
+        // every triangle the same way (also keeps zero-area ears consistent with their neighbours).
+        for (t in 0 until result.size / 3) { val b = result[t * 3 + 1]; result[t * 3 + 1] = result[t * 3 + 2]; result[t * 3 + 2] = b }
+        return result
+    }
+
+    private fun segmentsCross(p: FloatArray, a: Int, b: Int, c: Int, d: Int): Boolean {
+        if (a == c || a == d || b == c || b == d) return false
+        fun o(u: Int, v: Int, w: Int): Float =
+            (p[v * 3] - p[u * 3]) * (p[w * 3 + 1] - p[u * 3 + 1]) - (p[v * 3 + 1] - p[u * 3 + 1]) * (p[w * 3] - p[u * 3])
+        return (o(a, b, c) > 0) != (o(a, b, d) > 0) && (o(c, d, a) > 0) != (o(c, d, b) > 0)
+    }
+
+    /** Joins a hole into the outer polygon through a segment that crosses no edge. */
+    private fun bridge(p: FloatArray, outer: MutableList<Int>, hole: IntArray): MutableList<Int> {
+        val hi = hole.indices.maxBy { p[hole[it] * 3] }
+        val h = hole[hi]
+        val edges = ArrayList<Pair<Int, Int>>()
+        for (i in outer.indices) edges += outer[i] to outer[(i + 1) % outer.size]
+        for (i in hole.indices) edges += hole[i] to hole[(i + 1) % hole.size]
+        fun d2(v: Int): Float { val dx = p[v * 3] - p[h * 3]; val dy = p[v * 3 + 1] - p[h * 3 + 1]; return dx * dx + dy * dy }
+        val oi = outer.indices.sortedBy { d2(outer[it]) }.firstOrNull { i ->
+            edges.none { (a, b) -> segmentsCross(p, h, outer[i], a, b) }
+        } ?: outer.indices.minBy { d2(outer[it]) }
+        val o = outer[oi]
+        val merged = ArrayList<Int>(outer.size + hole.size + 2)
+        merged.addAll(outer.subList(0, oi + 1))
+        for (k in 0..hole.size) merged.add(hole[(hi + k) % hole.size])
+        merged.add(o)
+        merged.addAll(outer.subList(oi + 1, outer.size))
+        return merged
+    }
+
+    /** Ear clipping of a counter-clockwise polygon; falls back to a centre fan if it gets stuck. */
+    private fun earClip(p: FloatArray, poly0: List<Int>, pos: FloatList): List<Int> {
+        val poly = poly0.toMutableList()
+        val out = ArrayList<Int>()
+        fun x(v: Int) = p[v * 3]
+        fun y(v: Int) = p[v * 3 + 1]
+        fun cross(a: Int, b: Int, c: Int) = (x(b) - x(a)) * (y(c) - y(a)) - (y(b) - y(a)) * (x(c) - x(a))
+        fun inTri(v: Int, a: Int, b: Int, c: Int): Boolean {
+            if ((x(v) == x(a) && y(v) == y(a)) || (x(v) == x(b) && y(v) == y(b)) || (x(v) == x(c) && y(v) == y(c))) return false
+            return cross(a, b, v) >= 0 && cross(b, c, v) >= 0 && cross(c, a, v) >= 0
+        }
+        var guard = 0
+        while (poly.size > 3 && guard < poly.size * poly.size + 100) {
+            guard++
+            var clipped = false
+            // First look for proper convex ears; if none, accept flat ones (collinear points on
+            // the outline, which must stay so the cap shares every edge with the walls).
+            for (strict in listOf(true, false)) {
+                for (i in poly.indices) {
+                    val a = poly[(i + poly.size - 1) % poly.size]; val b = poly[i]; val c = poly[(i + 1) % poly.size]
+                    val cr = cross(a, b, c)
+                    if (if (strict) cr <= 0f else cr < 0f) continue
+                    if (poly.any { it != a && it != b && it != c && inTri(it, a, b, c) }) continue
+                    out.add(a); out.add(b); out.add(c)
+                    poly.removeAt(i)
+                    clipped = true
+                    break
+                }
+                if (clipped) break
+            }
+            if (!clipped) break
+        }
+        if (poly.size == 3) { out.addAll(poly) }
+        else if (poly.size > 3) {
+            // Degenerate leftovers: fan around their centroid (still closes the cap).
+            var cx = 0f; var cy = 0f
+            for (v in poly) { cx += x(v); cy += y(v) }
+            val c = pos.size / 3
+            pos.add(cx / poly.size); pos.add(cy / poly.size); pos.add(p[poly[0] * 3 + 2])
+            for (i in poly.indices) { out.add(poly[i]); out.add(poly[(i + 1) % poly.size]); out.add(c) }
+        }
+        return out
     }
 
     /** Indices remapped so vertices at the same position (to 1e-4 mm) share one id. */
@@ -288,6 +512,30 @@ object Printability {
             holes++
         }
         return Filled(p.toArray(), out.toArray(), holes)
+    }
+
+    private fun orientParts(p: FloatArray, tris: IntArray) {
+        val nv = p.size / 3
+        val parent = IntArray(nv) { it }
+        fun find(x: Int): Int { var r = x; while (parent[r] != r) { parent[r] = parent[parent[r]]; r = parent[r] }; return r }
+        for (t in 0 until tris.size / 3) {
+            val a = find(tris[t * 3]); parent[find(tris[t * 3 + 1])] = a; parent[find(tris[t * 3 + 2])] = a
+        }
+        val vol = HashMap<Int, Double>()
+        for (t in 0 until tris.size / 3) {
+            val r = find(tris[t * 3])
+            vol[r] = (vol[r] ?: 0.0) + signedVolume(p, tris, t)
+        }
+        for (t in 0 until tris.size / 3) if ((vol[find(tris[t * 3])] ?: 0.0) < 0) {
+            val a = tris[t * 3 + 1]; tris[t * 3 + 1] = tris[t * 3 + 2]; tris[t * 3 + 2] = a
+        }
+    }
+
+    private fun signedVolume(p: FloatArray, tris: IntArray, t: Int): Double {
+        val a = tris[t * 3] * 3; val b = tris[t * 3 + 1] * 3; val c = tris[t * 3 + 2] * 3
+        return (p[a].toDouble() * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) -
+            p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c]) +
+            p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6.0
     }
 
     fun signedVolume(p: FloatArray, tris: IntArray): Double {

@@ -88,7 +88,7 @@ enum class Quality(val label: String, val resolution: Int, val hint: String) {
 }
 
 /** A set of files downloaded together from the models release. */
-class Pack(val key: String, val title: String, val files: () -> List<String>)
+class Pack(val key: String, val title: String, val tag: String = ModelStore.RELEASE_TAG, val files: () -> List<String>)
 
 /**
  * The TripoSR ONNX models (~1.7 GB) are not inside the APK. They are published once as a
@@ -129,19 +129,19 @@ object ModelStore {
 
     /** Total size of the pack in the release, or null if the release doesn't have all its files. */
     suspend fun availableSize(pack: Pack): Long? {
-        val assets = githubJson("releases/tags/$RELEASE_TAG").assets().associateBy { it.name }
+        val assets = githubJson("releases/tags/${pack.tag}").assets().associateBy { it.name }
         val files = pack.files()
         if (files.isEmpty() || files.any { it !in assets }) return null
         return files.sumOf { assets.getValue(it).size }
     }
 
     suspend fun startDownload(ctx: Context, pack: Pack = MAIN) {
-        val assets = githubJson("releases/tags/$RELEASE_TAG").assets().associateBy { it.name }
+        val assets = githubJson("releases/tags/${pack.tag}").assets().associateBy { it.name }
         val dm = ctx.getSystemService(DownloadManager::class.java)
         cancel(ctx, pack)
         val edit = prefs(ctx, pack).edit()
         for (name in pack.files()) {
-            val asset = assets[name] ?: throw IllegalStateException("$name missing from release $RELEASE_TAG")
+            val asset = assets[name] ?: throw IllegalStateException("$name missing from release ${pack.tag}")
             file(ctx, name).delete()
             val req = DownloadManager.Request(Uri.parse(asset.url))
                 .setTitle(pack.title)
@@ -211,12 +211,41 @@ object ModelStore {
     fun sizeOnDisk(ctx: Context, pack: Pack = MAIN) = pack.files().sumOf { file(ctx, it).length() }
 
     fun describe(ctx: Context) = buildString {
-        for (pack in listOf(MAIN, NPU)) {
+        for (pack in listOf(MAIN, NPU) + Extras.all.map { it.pack }) {
             append("${pack.key}: ${if (isReady(ctx, pack)) "ready" else "not ready"}")
             pack.files().forEach { append(", $it=${file(ctx, it).length() shr 20}MB/${prefs(ctx, pack).getLong("size_$it", -1) shr 20}MB") }
             append("; ")
         }
     }
+}
+
+/**
+ * Optional enhancement models (convert/export_extras.py, release "extras-v1"). Nothing here is
+ * required: each is downloaded only if the user turns it on in Settings.
+ */
+object Extras {
+    private const val TAG = "extras-v1"
+
+    class Extra(val pack: Pack, val title: String, val detail: String, val license: String, val usesToggle: Boolean)
+
+    val UPSCALE = Extra(Pack("x_upscale", "שיפור תמונה (Real-ESRGAN)", TAG) { listOf("realesrgan_x4v3.onnx") },
+        "שיפור תמונה", "מחדד ומגדיל פי 4 תמונות קטנות או מטושטשות לפני היצירה", "BSD-3-Clause · Xintao Wang", true)
+    val SEGMENT = Extra(Pack("x_isnet", "הסרת רקע מדויקת (ISNet)", TAG) { listOf("isnet_general.onnx") },
+        "הסרת רקע מדויקת", "שוליים נקיים וחלקים דקים, במקום המודל הקטן המובנה", "Apache-2.0 · Xuebin Qin (DIS)", true)
+    val TAP = Extra(Pack("x_sam", "בחירה בנגיעה (MobileSAM)", TAG) { listOf("mobilesam_encoder.onnx", "mobilesam_decoder.onnx") },
+        "בחירת אובייקט בנגיעה", "נוגעים באובייקט בתמונה והוא נבחר, גם כשיש כמה אובייקטים", "Apache-2.0 · Chaoning Zhang (MobileSAM)", false)
+    val DEPTH = Extra(Pack("x_depth", "עומק (Depth Anything V2 Small)", TAG) { listOf("depth_anything_v2s.onnx") },
+        "מפת עומק לתבליט", "מאפשר ליצור תבליט תלת־ממדי מתמונה", "Apache-2.0 · Depth Anything V2 Small", false)
+    val all = listOf(UPSCALE, SEGMENT, TAP, DEPTH)
+
+    fun ready(ctx: Context, e: Extra) = ModelStore.isReady(ctx, e.pack)
+    /** Installed and switched on (extras without a switch are on while installed). */
+    fun active(ctx: Context, e: Extra) = ready(ctx, e) &&
+        (!e.usesToggle || ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("use_${e.pack.key}", true))
+    fun setActive(ctx: Context, e: Extra, on: Boolean) =
+        ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("use_${e.pack.key}", on).apply()
+    fun file(ctx: Context, e: Extra, i: Int = 0) = ModelStore.file(ctx, e.pack.files()[i])
+    fun describe(ctx: Context) = all.joinToString { "${it.pack.key}=${if (active(ctx, it)) "on" else if (ready(ctx, it)) "off" else "-"}" }
 }
 
 /** Models compiled ahead of time for this phone's NPU (convert/compile_npu.py, compile-npu.yml). */

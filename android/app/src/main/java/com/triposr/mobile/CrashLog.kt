@@ -111,6 +111,7 @@ object CrashLog {
         appendLine("RAM: ${mem.availMem shr 20} MB free of ${mem.totalMem shr 20} MB, heap limit ${am.largeMemoryClass} MB")
         appendLine("Model: ${runCatching { ModelStore.describe(app) }.getOrDefault("?")}")
         appendLine("Settings: ${runCatching { Settings.describe(app) }.getOrDefault("?")}")
+        appendLine("Extras: ${runCatching { Extras.describe(app) }.getOrDefault("?")}")
         if (e != null) {
             appendLine("--- Exception ---")
             appendLine(e.stackTraceToString().take(6000))

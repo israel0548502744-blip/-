@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
                         Screen.Projects -> ProjectsScreen()
                         Screen.Settings -> SettingsScreen()
                         Screen.Diagnostics -> DiagnosticsScreen()
+                        Screen.Extra -> com.triposr.mobile.ui.ExtraScreen()
                     }
                 }
                 if (screen in listOf(Screen.Home, Screen.Projects, Screen.Settings, Screen.Diagnostics)) BottomNav(screen)

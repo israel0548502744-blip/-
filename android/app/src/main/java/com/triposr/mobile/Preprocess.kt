@@ -18,18 +18,26 @@ object Preprocess {
     private const val SEG_SIZE = 320
     private const val FOREGROUND_RATIO = 0.85f
 
+    /** rembg's input settings for u2netp (the built-in model). */
+    val U2NETP = SegModel(SEG_SIZE, floatArrayOf(0.485f, 0.456f, 0.406f), floatArrayOf(0.229f, 0.224f, 0.225f))
+    /** rembg's input settings for ISNet general-use (optional download). */
+    val ISNET = SegModel(1024, floatArrayOf(0.5f, 0.5f, 0.5f), floatArrayOf(1f, 1f, 1f))
+
+    class SegModel(val size: Int, val mean: FloatArray, val std: FloatArray)
+
     /** Returns a copy of [src] whose alpha channel is the foreground mask. */
-    fun removeBackground(src: Bitmap, segmenter: OrtSession): Bitmap {
+    fun removeBackground(src: Bitmap, segmenter: OrtSession, model: SegModel = U2NETP): Bitmap {
         if (hasTransparency(src)) return src.copy(Bitmap.Config.ARGB_8888, true)
 
-        // rembg: resize to 320, divide by the image max, ImageNet mean/std.
-        val small = Bitmap.createScaledBitmap(src, SEG_SIZE, SEG_SIZE, true)
-        val px = IntArray(SEG_SIZE * SEG_SIZE).also { small.getPixels(it, 0, SEG_SIZE, 0, 0, SEG_SIZE, SEG_SIZE) }
+        // rembg: resize to the model size, divide by the image max, then mean/std.
+        val size = model.size
+        val small = Bitmap.createScaledBitmap(src, size, size, true)
+        val px = IntArray(size * size).also { small.getPixels(it, 0, size, 0, 0, size, size) }
         var maxV = 1
         for (c in px) maxV = maxOf(maxV, Color.red(c), Color.green(c), Color.blue(c))
-        val mean = floatArrayOf(0.485f, 0.456f, 0.406f)
-        val std = floatArrayOf(0.229f, 0.224f, 0.225f)
-        val plane = SEG_SIZE * SEG_SIZE
+        val mean = model.mean
+        val std = model.std
+        val plane = size * size
         val input = FloatArray(3 * plane)
         for (i in 0 until plane) {
             val c = px[i]
@@ -38,7 +46,7 @@ object Preprocess {
             input[2 * plane + i] = (Color.blue(c).toFloat() / maxV - mean[2]) / std[2]
         }
         val env = OrtEnvironment.getEnvironment()
-        val pred = OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SEG_SIZE.toLong(), SEG_SIZE.toLong())).use { t ->
+        val pred = OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, size.toLong(), size.toLong())).use { t ->
             segmenter.run(mapOf(segmenter.inputNames.first() to t)).use { out ->
                 val fb = (out[0] as OnnxTensor).floatBuffer
                 FloatArray(plane).also { fb.get(it) }
@@ -50,7 +58,7 @@ object Preprocess {
             val a = (((pred[i] - lo) / maxOf(hi - lo, 1e-6f)) * 255f).toInt().coerceIn(0, 255)
             Color.argb(a, 0, 0, 0)
         }
-        val mask = Bitmap.createBitmap(maskPx, SEG_SIZE, SEG_SIZE, Bitmap.Config.ARGB_8888)
+        val mask = Bitmap.createBitmap(maskPx, size, size, Bitmap.Config.ARGB_8888)
         val maskFull = Bitmap.createScaledBitmap(mask, src.width, src.height, true)
 
         val w = src.width; val h = src.height
@@ -130,7 +138,7 @@ object Preprocess {
         return Bitmap.createScaledBitmap(cur, w, h, true)
     }
 
-    private fun hasTransparency(bmp: Bitmap): Boolean {
+    fun hasTransparency(bmp: Bitmap): Boolean {
         if (!bmp.hasAlpha()) return false
         val w = bmp.width; val h = bmp.height
         val px = IntArray(w * h).also { bmp.getPixels(it, 0, w, 0, 0, w, h) }

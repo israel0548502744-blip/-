@@ -27,6 +27,7 @@ sealed interface Screen {
     data object Projects : Screen
     data object Settings : Screen
     data object Diagnostics : Screen
+    data object Extra : Screen
 }
 
 data class JobState(
@@ -52,7 +53,18 @@ data class JobState(
 }
 
 /** What the model will be given: the 512 px frame after background removal, and warnings about it. */
-class Preview(val source: Bitmap, val removeBackground: Boolean, val framed: Bitmap, val issues: List<ImageIssue>)
+class Preview(
+    val source: Bitmap,
+    val removeBackground: Boolean,
+    val framed: Bitmap,
+    val issues: List<ImageIssue>,
+    /** The image actually processed: [source], or its 4x upscale when that extra is on. */
+    val work: Bitmap = source,
+    /** Tap-to-select points in [work] pixels; when set they decide the object instead of background removal. */
+    val points: List<Pair<Float, Float>> = emptyList(),
+    /** [work] with everything outside the selection dimmed, shown while tapping. */
+    val selection: Bitmap? = null,
+)
 
 data class Project(
     val id: String,
@@ -151,11 +163,30 @@ object AppState {
         framed = null
         preview = null
         sourceInfo = info
+        tapPoints = emptyList()
+        refreshPreview(Settings.removeBackground(app))
+    }
+
+    /** Tap-to-select points (in the preview's work-image pixels). */
+    var tapPoints by mutableStateOf<List<Pair<Float, Float>>>(emptyList()); private set
+    private var sam: Pair<Bitmap, Enhance.SamImage>? = null
+    private var upscaled: Pair<Bitmap, Bitmap>? = null
+
+    fun tap(x: Float, y: Float) {
+        tapPoints = tapPoints + (x to y)
+        refreshPreview(Settings.removeBackground(app))
+    }
+
+    fun clearTaps() {
+        tapPoints = emptyList()
         refreshPreview(Settings.removeBackground(app))
     }
 
     @Synchronized
     private fun engine(): TripoEngine = engine ?: TripoEngine(app).also { engine = it }
+
+    /** The built-in background-removal model (u2netp, shipped in the APK). */
+    fun segmenter() = engine().segmenter()
 
     /**
      * Runs background removal and framing for the current image in the background, so the user
@@ -164,11 +195,12 @@ object AppState {
     fun refreshPreview(removeBackground: Boolean) {
         val img = input ?: return
         val current = preview
-        if (current != null && current.source === img && current.removeBackground == removeBackground) return
+        val points = tapPoints
+        if (current != null && current.source === img && current.removeBackground == removeBackground && current.points == points) return
         previewJob?.cancel()
         previewBusy = true
         previewJob = scope.launch {
-            val p = runCatching { makePreview(img, removeBackground) }
+            val p = runCatching { makePreview(img, removeBackground, points) }
                 .onFailure { if (it !is kotlinx.coroutines.CancellationException) CrashLog.error("preview", it) }
                 .getOrNull()
             withContext(Dispatchers.Main) {
@@ -178,15 +210,40 @@ object AppState {
         }
     }
 
-    private fun makePreview(img: Bitmap, removeBackground: Boolean): Preview {
+    private fun makePreview(img: Bitmap, removeBackground: Boolean, points: List<Pair<Float, Float>>): Preview {
         val t0 = System.nanoTime()
-        val cut = if (removeBackground) Preprocess.removeBackground(img, engine().segmenter())
-        else img.copy(Bitmap.Config.ARGB_8888, false)
+        // Optional extras, each only if installed and switched on in Settings.
+        val work = when {
+            !Enhance.shouldUpscale(app, img) -> img
+            upscaled?.first === img -> upscaled!!.second
+            else -> Enhance.upscale(app, img).also { upscaled = img to it; CrashLog.log("Upscaled ${img.width}x${img.height} -> ${it.width}x${it.height}") }
+        }
+        var selection: Bitmap? = null
+        val cut = when {
+            points.isNotEmpty() && Extras.ready(app, Extras.TAP) -> {
+                val emb = sam?.takeIf { it.first === work }?.second ?: Enhance.samEncode(app, work).also { sam = work to it }
+                val mask = Enhance.samMask(app, emb, points)
+                selection = dimOutside(work, mask)
+                Enhance.applyMask(work, mask)
+            }
+            removeBackground -> Enhance.removeBackground(app, work) { engine().segmenter() }
+            else -> work.copy(Bitmap.Config.ARGB_8888, false)
+        }
         val framed = Preprocess.frameForeground(cut)
-        val check = Preprocess.check(img, cut, removeBackground, sourceInfo)
-        CrashLog.log("Preview in %.2fs: removeBg=$removeBackground issues=${check.issues} ".format((System.nanoTime() - t0) / 1e9) +
+        val check = Preprocess.check(work, cut, removeBackground || points.isNotEmpty(), sourceInfo)
+        CrashLog.log("Preview in %.2fs: removeBg=$removeBackground taps=${points.size} extras=${Extras.describe(app)} issues=${check.issues} ".format((System.nanoTime() - t0) / 1e9) +
             check.stats.entries.joinToString { "%s=%.3f".format(it.key, it.value) })
-        return Preview(img, removeBackground, framed, check.issues)
+        return Preview(img, removeBackground, framed, check.issues, work, points, selection)
+    }
+
+    private fun dimOutside(src: Bitmap, mask: IntArray): Bitmap {
+        val w = src.width; val h = src.height
+        val px = IntArray(w * h).also { src.getPixels(it, 0, w, 0, 0, w, h) }
+        for (i in px.indices) if (mask[i] < 128) {
+            val c = px[i]
+            px[i] = android.graphics.Color.rgb(android.graphics.Color.red(c) / 4, android.graphics.Color.green(c) / 4, android.graphics.Color.blue(c) / 4 + 20)
+        }
+        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
     }
 
     fun start(choice: Backend?, quality: Quality, removeBackground: Boolean, smooth: Boolean) {
@@ -220,12 +277,8 @@ object AppState {
 
                 stage(Stage.SEGMENT, 0f)
                 val segStart = System.nanoTime()
-                val ready = preview?.takeIf { it.source === image && it.removeBackground == removeBackground }
-                val frame = ready?.framed ?: run {
-                    val cut = if (removeBackground) Preprocess.removeBackground(image, eng.segmenter())
-                    else image.copy(Bitmap.Config.ARGB_8888, false)
-                    Preprocess.frameForeground(cut)
-                }
+                val ready = preview?.takeIf { it.source === image && (it.points.isNotEmpty() || it.removeBackground == removeBackground) }
+                val frame = ready?.framed ?: makePreview(image, removeBackground, tapPoints).framed
                 framed = frame
                 val segSeconds = (System.nanoTime() - segStart) / 1e9
                 CrashLog.log("Frame ${if (ready != null) "from preview" else "computed"} in %.2fs, warnings=${ready?.issues}".format(segSeconds))
@@ -249,7 +302,7 @@ object AppState {
                 val timings = LinkedHashMap<String, Double>()
                 timings[Stage.SEGMENT.name] = segSeconds
                 for ((s, t) in out.timings) timings[s.name] = t
-                val p = saveProject(out.mesh, frame, eng.encoderBackend, quality,
+                val p = saveProject(out.mesh, frame, eng.encoderBackend.short, quality.label,
                     (System.currentTimeMillis() - job!!.startedAt) / 1000.0, timings)
                 CrashLog.log(("Job done in %.1fs (pipeline %.1fs): geometry %.2fs, texture %s, ${out.mesh.triangleCount} triangles, " +
                     "texture ${out.mesh.texture?.size ?: 0}px").format(p.seconds, seconds, p.geometrySeconds,
@@ -312,10 +365,10 @@ object AppState {
 
     private fun projectsDir() = File(app.filesDir, "projects").apply { mkdirs() }
 
-    private fun saveProject(mesh: Mesh, thumb: Bitmap, backend: Backend, quality: Quality, seconds: Double,
-                            timings: Map<String, Double>): Project {
+    fun saveProject(mesh: Mesh, thumb: Bitmap, backend: String, quality: String, seconds: Double,
+                    timings: Map<String, Double>, name: String = "מודל ${projects.size + 1}"): Project {
         val id = System.currentTimeMillis().toString()
-        val p = Project(id, "מודל ${projects.size + 1}", System.currentTimeMillis(), backend.short, quality.label,
+        val p = Project(id, name, System.currentTimeMillis(), backend, quality,
             seconds, mesh.vertexCount, mesh.triangleCount, timings)
         val dir = p.dir(app).apply { mkdirs() }
         MeshTools.save(mesh, File(dir, "mesh.bin"))
@@ -349,6 +402,13 @@ object AppState {
             }.getOrNull()
         }?.sortedByDescending { it.created } ?: emptyList()
         synchronized(projects) { projects.clear(); projects.addAll(list) }
+    }
+
+    /** Shows a freshly made model (from [start] or [Creations]) with back leading to the gallery. */
+    fun showNew(m: Mesh, p: Project) {
+        originalMesh = m; mesh = m; project = p
+        navigateRoot(Screen.Projects)
+        navigate(Screen.Result)
     }
 
     fun open(p: Project) {
