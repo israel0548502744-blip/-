@@ -29,7 +29,9 @@ import kotlin.math.sin
 class SgEngine(private val context: Context) : AutoCloseable {
     companion object {
         const val CONFIG = "sg_config.json"
-        val GRAPHS = listOf("sg_dino", "sg_dit0", "sg_dit1", "sg_dit2", "sg_vae_kv", "sg_vae_query")
+        /** The DiT is split into this many parts (3 blocks each), see DIT_PARTS in export_triposg.py. */
+        const val DIT_PARTS = 7
+        val GRAPHS = listOf("sg_dino") + (0 until DIT_PARTS).map { "sg_dit$it" } + listOf("sg_vae_kv", "sg_vae_query")
         const val COARSE = 64
         const val LEVELS = 2
 
@@ -201,7 +203,9 @@ class SgEngine(private val context: Context) : AutoCloseable {
         val condTokens = cond.size / c.condDim
         // Batch 2: [no image, image]. The unconditional branch sees zeros.
         val cond2 = FloatArray(2 * cond.size).also { System.arraycopy(cond, 0, it, cond.size, cond.size) }
-        val sessions = (0 until 3).map { open("sg_dit$it") }
+        if (c.parts.size != DIT_PARTS) throw IllegalStateException("חבילת TripoSG לא תואמת לגרסת האפליקציה, עדכן אחד מהם")
+        val sessions = ArrayList<OrtSession>()
+        try { for (i in 0 until DIT_PARTS) sessions += open("sg_dit$i") } catch (e: Throwable) { sessions.forEach { it.close() }; throw e }
         try {
             tensor(cond2, 2, condTokens.toLong(), c.condDim.toLong()).use { condT ->
                 val both = FloatArray(2 * n)
@@ -227,21 +231,35 @@ class SgEngine(private val context: Context) : AutoCloseable {
         return lat
     }
 
-    /** One DiT evaluation through the three parts; skips go from part 0 straight to part 2. */
+    /**
+     * One DiT evaluation through the parts in order. Each part's outputs stay open until the end
+     * (U-Net skips made early are consumed by late parts), and are fed by name.
+     */
     private fun runDit(s: List<OrtSession>, latT: OnnxTensor, tembT: OnnxTensor, condT: OnnxTensor): FloatArray {
-        val (in0, out0) = config.parts[0]
-        val (in1, _) = config.parts[1]
-        val (in2, _) = config.parts[2]
-        s[0].run(mapOf(in0[0] to latT, in0[1] to tembT, in0[2] to condT)).use { r0 ->
-            val outs0 = out0.indices.associate { out0[it] to (r0[it] as OnnxTensor) }
-            val hidden0 = outs0.getValue("hidden")
-            s[1].run(mapOf(in1[0] to hidden0, in1[1] to condT)).use { r1 ->
+        val results = ArrayList<OrtSession.Result>()
+        try {
+            val named = HashMap<String, OnnxTensor>()
+            var hidden: OnnxTensor? = null
+            for ((i, sess) in s.withIndex()) {
+                val (inputs, outputs) = config.parts[i]
                 val feeds = HashMap<String, OnnxTensor>()
-                feeds[in2[0]] = r1[0] as OnnxTensor
-                feeds[in2[1]] = condT
-                for (name in in2.drop(2)) feeds[name] = outs0[name] ?: throw IllegalStateException("missing $name")
-                return s[2].run(feeds).use { it.floats() }
+                for (name in inputs) feeds[name] = when (name) {
+                    "latents" -> latT
+                    "temb" -> tembT
+                    "cond" -> condT
+                    "hidden_in" -> hidden ?: throw IllegalStateException("no hidden state for part $i")
+                    else -> named[name] ?: throw IllegalStateException("missing $name for part $i")
+                }
+                val r = sess.run(feeds)
+                if (i == s.size - 1) return r.use { it.floats() }
+                results += r
+                for ((k, name) in outputs.withIndex()) {
+                    if (name == "hidden") hidden = r[k] as OnnxTensor else named[name] = r[k] as OnnxTensor
+                }
             }
+            throw IllegalStateException("DiT has no final part")
+        } finally {
+            results.forEach { it.close() }
         }
     }
 

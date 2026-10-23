@@ -34,7 +34,9 @@ from torch import nn
 
 N_TOKENS = 2048
 BATCH = 2  # classifier-free guidance: [unconditional, conditional]
-DIT_PARTS = [(0, 6), (7, 13), (14, 20)]
+# Three blocks per part (~205M params, ~0.8 GB fp32): seven-block parts ran the CI runner out of
+# memory while compiling for the NPU.
+DIT_PARTS = [(i, min(i + 2, 20)) for i in range(0, 21, 3)]
 QUERY_CHUNK = 16384
 BOUNDS = 1.005
 
@@ -293,22 +295,31 @@ def export_dino(pipe, out):
     check(p, x, ["image"], y, "dino")
 
 
+def run_chain(parts, latents, temb, cond, stop=None):
+    """Runs the DiT parts in order (skips kept by name). With [stop], returns the inputs of that part."""
+    skips, h = {}, None
+    for j, p in enumerate(parts):
+        args = ([latents, temb, cond] if p.lo == 0 else [h, cond]) + [skips[k] for k in p.skips_in]
+        if j == stop:
+            return args
+        with torch.no_grad():
+            y = p(*args)
+        y = y if isinstance(y, tuple) else (y,)
+        if p.hi == p.n - 1:
+            return y[0]
+        h = y[0]
+        skips.update(zip(p.skips_out, y[1:]))
+
+
 def dit_inputs(pipe, idx, rng):
     """Realistic inputs for part idx: noise + a random condition pushed through the earlier parts."""
     c = pipe.transformer.config
     t = cond_tokens(pipe)
     cond = torch.cat([torch.zeros(1, t, c.cross_attention_dim), torch.randn(1, t, c.cross_attention_dim)])
-    x = [torch.from_numpy(rng.standard_normal((BATCH, N_TOKENS, c.in_channels)).astype(np.float32)),
-         torch.from_numpy(timestep_sin([700.0] * BATCH, c.width)), cond]
-    skips = {}
-    for j, (lo, hi) in enumerate(DIT_PARTS[:idx]):
-        p = DitPart(pipe.transformer, lo, hi)
-        with torch.no_grad():
-            y = p(*x)
-        skips.update(zip(p.skips_out, y[1:]))
-        nxt = DitPart(pipe.transformer, *DIT_PARTS[j + 1])
-        x = [y[0], cond] + [skips[k] for k in nxt.skips_in]
-    return x
+    lat = torch.from_numpy(rng.standard_normal((BATCH, N_TOKENS, c.in_channels)).astype(np.float32))
+    temb = torch.from_numpy(timestep_sin([700.0] * BATCH, c.width))
+    parts = [DitPart(pipe.transformer, lo, hi) for lo, hi in DIT_PARTS]
+    return run_chain(parts, lat, temb, cond, stop=idx)
 
 
 def export_dit(pipe, i, out, rng):
@@ -369,16 +380,13 @@ def verify_embeddings(pipe):
 
 
 def verify_split(pipe, rng):
-    """The three parts chained together must equal the original transformer."""
+    """The parts chained together must equal the original transformer."""
     x = dit_inputs(pipe, 0, rng)
     t = torch.tensor([700.0] * BATCH)
     with torch.no_grad():
         ref = pipe.transformer(x[0], t, encoder_hidden_states=x[2], return_dict=False)[0]
         parts = [DitPart(pipe.transformer, lo, hi) for lo, hi in DIT_PARTS]
-        h = parts[0](*x)
-        skips = dict(zip(parts[0].skips_out, h[1:]))
-        h = parts[1](h[0], x[2])[0]
-        got = parts[2](h, x[2], *[skips[k] for k in parts[2].skips_in])
+        got = run_chain(parts, *x)
     err = float((got - ref).abs().max() / ref.abs().max())
     print(f"check split DiT vs original transformer: max relative error {err:.2e}", flush=True)
     if err > 1e-4:
@@ -478,10 +486,7 @@ def reference(pipe, image, steps, out, isnet=None, seed=0):
         t = sig[i] * 1000
         with torch.no_grad():
             temb = torch.from_numpy(timestep_sin([t, t], pipe.transformer.config.width))
-            h = parts[0](torch.cat([lat, lat]), temb, cond2)
-            skips = dict(zip(parts[0].skips_out, h[1:]))
-            h = parts[1](h[0], cond2)[0]
-            v = parts[2](h, cond2, *[skips[k] for k in parts[2].skips_in])
+            v = run_chain(parts, torch.cat([lat, lat]), temb, cond2)
         v = v[0:1] + 7.0 * (v[1:2] - v[0:1])
         lat = lat + float(sig[i] - sig[i + 1]) * v
         print(f"step {i + 1}/{steps} {time.time() - t0:.0f}s", flush=True)

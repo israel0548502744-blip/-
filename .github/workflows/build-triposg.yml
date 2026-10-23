@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        parts: ["config,dino,vae", "dit0", "dit1", "dit2"]
+        parts: ["config,dino,vae", "dit0", "dit1", "dit2", "dit3", "dit4", "dit5", "dit6"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,6 +58,8 @@ jobs:
         run: |
           pip install onnxruntime-qnn==2.7.0
           mkdir -p /mnt/w/npu
+          # Memory every 30 s, so a runner that dies while compiling shows why.
+          (while true; do echo "mem: $(free -m | awk '/Mem/{print $3"MB used, "$7"MB avail"}') swap: $(free -m | awk '/Swap/{print $3"MB"}')"; sleep 30; done) &
           for m in /mnt/w/onnx/*.onnx; do
             /usr/bin/time -f "%e s, %M KB peak" python convert/compile_npu.py "$m" /mnt/w/npu --suffix _sm8750 --soc-model 69 --htp-arch 79 2>&1 | tail -5
           done
