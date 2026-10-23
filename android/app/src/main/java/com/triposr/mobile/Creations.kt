@@ -140,12 +140,18 @@ object Creations {
     private const val TEXT_CELL_MM = 0.25f
 
     /**
+     * Rubik Bold (SIL OFL, Hebrew + Latin) ships with the app, so printed text never uses the
+     * phone's system font (on Samsung that is Samsung's own, not licensed for products).
+     */
+    private val font by lazy { android.graphics.Typeface.createFromAsset(AppState.app.assets, "fonts/Rubik-Bold.ttf") }
+
+    /**
      * Text rendered as a mask, [heightCells] cells per line height. StaticLayout runs the bidi
      * algorithm, so Hebrew, English and numbers mix correctly.
      */
     fun textMask(text: String, heightCells: Int): Templates.Mask {
         val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            typeface = font
             textSize = heightCells.toFloat()
             color = Color.BLACK
         }

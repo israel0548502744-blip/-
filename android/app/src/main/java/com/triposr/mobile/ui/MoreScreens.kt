@@ -432,6 +432,7 @@ fun SettingsScreen() {
     var checking by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
     var crashTick by remember { mutableStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
@@ -506,9 +507,24 @@ fun SettingsScreen() {
             Section(title = "אודות") {
                 Text("TripoSR (VAST AI & Stability AI, רישיון MIT) רץ מקומית עם ONNX Runtime ו-Qualcomm QNN. " +
                     "הסרת רקע: U2-Net (Apache-2.0).", color = C.Sub, fontSize = 13.sp)
+                SoftButton("רישיונות קוד פתוח", Modifier.fillMaxWidth()) { showLicenses = true }
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+    if (showLicenses) {
+        val text = remember { runCatching { ctx.assets.open("third_party_licenses.txt").bufferedReader().readText() }.getOrDefault("") }
+        AlertDialog(
+            onDismissRequest = { showLicenses = false }, containerColor = C.CardHigh,
+            title = { Text("רישיונות קוד פתוח", color = C.Text) },
+            text = {
+                androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                    Text(text, color = C.Sub, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.verticalScroll(rememberScrollState()))
+                }
+            },
+            confirmButton = { TextButton({ showLicenses = false }) { Text("סגור", color = C.Violet) } },
+        )
     }
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false }, containerColor = C.CardHigh,
