@@ -246,6 +246,7 @@ fun ResultScreen() {
                     ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד, בלי הטקסטורה)"
                     ExportFormat.STL -> "להדפסה: מתוקן, במילימטרים, עומד על הבסיס (בלי צבע)"
                     ExportFormat.THREE_MF -> "הפורמט של תוכנות ההדפסה: מתוקן, במילימטרים, עומד על הבסיס"
+                    ExportFormat.WRL -> "הדפסה בצבע מלא (שירותי הדפסה, מדפסות צבע): מתוקן, במילימטרים, עם הצבעים"
                     ExportFormat.PLY -> "סריקות ו-MeshLab, צבע לכל קודקוד (בלי הטקסטורה)"
                 }, color = C.Sub, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -327,7 +327,7 @@ fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect:
                     .clickable { onSelect(o) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label(o), color = textColor, fontSize = 13.sp,
+                Text(label(o), color = textColor, fontSize = if (options.size > 5) 11.sp else 13.sp,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
             }
         }

@@ -114,7 +114,10 @@ object Printability {
         val normals = MeshTools.normals(out, tris)
         // Judge the result the way a slicer reads an STL: vertices merged by position.
         val edges = countEdges(weld(out, tris))
-        val colors = FloatArray(out.size) { 0.8f }
+        // Colours from the nearest original vertex (repairs and the cut add or move vertices).
+        val colors = transferColors(src, out) { x, y, z, o ->
+            o[0] = (x - cx) * s; o[1] = (-z - cy) * s; o[2] = (y - lo[2]) * s - cut
+        }
         val mesh = Mesh(out, normals, colors, tris)
         val thickness = wallThickness(mesh)
         val sampled = thickness.filter { it.isFinite() }.sorted()
@@ -125,6 +128,51 @@ object Printability {
             edges.open == 0 && edges.nonManifold == 0 && edges.misoriented == 0,
             abs(signedVolume(out, tris)) / 1000.0, minWall, thin, tris.size / 3, cut)
         return PrintModel(mesh, report, thickness)
+    }
+
+    /**
+     * Per-vertex colours for [out] (print space) taken from the nearest vertex of [src], whose
+     * positions [toPrint] maps into print space. Uses a uniform grid; grey where nothing is near.
+     */
+    private fun transferColors(src: Mesh, out: FloatArray, toPrint: (Float, Float, Float, FloatArray) -> Unit): FloatArray {
+        val n = src.vertexCount
+        val sp = FloatArray(n * 3); val t = FloatArray(3)
+        for (v in 0 until n) {
+            toPrint(src.positions[v * 3], src.positions[v * 3 + 1], src.positions[v * 3 + 2], t)
+            sp[v * 3] = t[0]; sp[v * 3 + 1] = t[1]; sp[v * 3 + 2] = t[2]
+        }
+        val cell = 1f  // mm
+        fun ci(x: Float) = kotlin.math.floor(x / cell).toInt() + 1_000_000
+        fun key(i: Int, j: Int, l: Int) = (i.toLong() shl 42) or (j.toLong() shl 21) or l.toLong()
+        // Cell -> first vertex, then a linked list through [next].
+        val grid = HashMap<Long, Int>(n)
+        val next = IntArray(n)
+        for (v in 0 until n) {
+            val kk = key(ci(sp[v * 3]), ci(sp[v * 3 + 1]), ci(sp[v * 3 + 2]))
+            next[v] = grid[kk] ?: -1
+            grid[kk] = v
+        }
+        val colors = FloatArray(out.size) { 0.8f }
+        for (v in 0 until out.size / 3) {
+            val x = out[v * 3]; val y = out[v * 3 + 1]; val z = out[v * 3 + 2]
+            val i0 = ci(x); val j0 = ci(y); val l0 = ci(z)
+            var best = -1; var bestD = Float.MAX_VALUE
+            for (r in 0..3) {
+                for (dx in -r..r) for (dy in -r..r) for (dz in -r..r) {
+                    if (maxOf(abs(dx), abs(dy), abs(dz)) != r) continue
+                    var c = grid[key(i0 + dx, j0 + dy, l0 + dz)] ?: continue
+                    while (c >= 0) {
+                        val ex = sp[c * 3] - x; val ey = sp[c * 3 + 1] - y; val ez = sp[c * 3 + 2] - z
+                        val d = ex * ex + ey * ey + ez * ez
+                        if (d < bestD) { bestD = d; best = c }
+                        c = next[c]
+                    }
+                }
+                if (best >= 0) break
+            }
+            if (best >= 0) System.arraycopy(src.colors, best * 3, colors, v * 3, 3)
+        }
+        return colors
     }
 
     // ---------------------------------------------------------------- topology

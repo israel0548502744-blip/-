@@ -19,6 +19,8 @@ enum class ExportFormat(val ext: String, val mime: String, val label: String, va
     OBJ("obj", "text/plain", "OBJ", false),
     STL("stl", "model/stl", "STL", false),
     THREE_MF("3mf", "model/3mf", "3MF", false),
+    /** VRML 97 with per-vertex colours, in millimetres: what full-colour print services take. */
+    WRL("wrl", "model/vrml", "WRL", false),
     PLY("ply", "application/octet-stream", "PLY", false);
 
     companion object {
@@ -148,7 +150,23 @@ object MeshTools {
         // Print formats get the repaired, millimetre-scaled, Z-up model.
         ExportFormat.STL -> writeStl(Printability.prepared(mesh).mesh, out)
         ExportFormat.THREE_MF -> Printability.write3mf(Printability.prepared(mesh).mesh, out)
+        ExportFormat.WRL -> writeVrml(Printability.prepared(mesh).mesh, out)
         ExportFormat.PLY -> writePly(mesh, out)
+    }
+
+    /** VRML 97 IndexedFaceSet with colorPerVertex, coordinates in millimetres. */
+    fun writeVrml(m: Mesh, out: OutputStream) {
+        val w = out.bufferedWriter(Charsets.US_ASCII)
+        fun f(x: Float) = "%.4f".format(java.util.Locale.US, x)
+        w.write("#VRML V2.0 utf8\n# Units: millimetres\nShape {\n appearance Appearance { material Material { diffuseColor 1 1 1 } }\n")
+        w.write(" geometry IndexedFaceSet {\n  solid TRUE\n  colorPerVertex TRUE\n  coord Coordinate { point [\n")
+        for (v in 0 until m.vertexCount) w.write("   ${f(m.positions[v * 3])} ${f(m.positions[v * 3 + 1])} ${f(m.positions[v * 3 + 2])},\n")
+        w.write("  ] }\n  color Color { color [\n")
+        for (v in 0 until m.vertexCount) w.write("   ${f(m.colors[v * 3])} ${f(m.colors[v * 3 + 1])} ${f(m.colors[v * 3 + 2])},\n")
+        w.write("  ] }\n  coordIndex [\n")
+        for (t in 0 until m.triangleCount) w.write("   ${m.indices[t * 3]}, ${m.indices[t * 3 + 1]}, ${m.indices[t * 3 + 2]}, -1,\n")
+        w.write("  ]\n }\n}\n")
+        w.flush()
     }
 
     private fun writeStl(m: Mesh, out: OutputStream) {
