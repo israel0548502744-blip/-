@@ -90,7 +90,9 @@ fun ExtraScreen() {
     var cookieMm by remember { mutableFloatStateOf(80f) }
     var stampMm by remember { mutableFloatStateOf(50f) }
     var keyring by remember { mutableStateOf(true) }
-    var outline by remember { mutableStateOf(true) }
+    var tagStyle by remember { mutableStateOf(Templates.TagStyle.OUTLINE) }
+    var lamp by remember { mutableStateOf(false) }
+    var lampMm by remember { mutableFloatStateOf(80f) }
     var stampImage by remember { mutableStateOf(false) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) image = Actions.loadBitmap(ctx, uri) ?: run { Actions.toast(ctx, "לא הצלחתי לפתוח את התמונה"); null }
@@ -118,7 +120,7 @@ fun ExtraScreen() {
                 }
             }
             Text(when (kind) {
-                Creations.Kind.LITHOPHANE -> "לוח דק שהתמונה מופיעה בו כשמאירים מאחור. מודפס בלבן, הכי פשוט ותמיד מצליח."
+                Creations.Kind.LITHOPHANE -> "לוח דק (או מנורה גלילית) שהתמונה מופיעה בו כשמאירים מאחור. מודפס בלבן, הכי פשוט ותמיד מצליח."
                 Creations.Kind.RELIEF -> "התמונה בולטת מהלוח לפי העומק שלה, עם הצבעים שלה."
                 Creations.Kind.QR -> "לוח עם קוד QR בולט שנסרק בטלפון: קישור, רשת Wi‑Fi, וואטסאפ או טלפון. החלף פילמנט בגובה 2 מ״מ לשני צבעים."
                 Creations.Kind.NAME -> "שם או מילה בולטים על בסיס, עם חור לטבעת. החלף פילמנט בגובה 2.4 מ״מ כדי שהאותיות יצאו בצבע אחר."
@@ -174,7 +176,12 @@ fun ExtraScreen() {
 
             when (kind) {
                 Creations.Kind.LITHOPHANE -> Section(title = "אפשרויות") {
-                    ToggleRow("מסגרת", "שוליים עבים שמחזיקים את הלוח ישר", frame) { frame = it }
+                    ToggleRow("גלילי (מנורה)", "התמונה מסביב לגליל. שמים בפנים נורת LED", lamp) { lamp = it }
+                    if (lamp) {
+                        Text("קוטר: %.0f מ״מ (הגובה לפי יחס התמונה)".format(lampMm), color = C.Text, fontSize = 14.sp)
+                        Slider(lampMm, { lampMm = (it / 5).toInt() * 5f }, valueRange = 50f..120f, colors = sliderColors())
+                    }
+                    ToggleRow("מסגרת", if (lamp) "שוליים עבים למעלה ולמטה" else "שוליים עבים שמחזיקים את הלוח ישר", frame) { frame = it }
                     ToggleRow("נגטיב", "הופך בהיר וכהה", invert) { invert = it }
                     Text("עובי מקסימלי: %.1f מ״מ".format(maxMm), color = C.Text, fontSize = 14.sp)
                     Slider(maxMm, { maxMm = (it * 2).toInt() / 2f }, valueRange = 2f..5f, colors = sliderColors())
@@ -189,7 +196,9 @@ fun ExtraScreen() {
                     }
                 }
                 Creations.Kind.NAME -> Section(title = "אפשרויות") {
-                    ToggleRow("בסיס לפי צורת האותיות", "כבוי: לוח מלבני מעוגל", outline) { outline = it }
+                    Segmented(Templates.TagStyle.entries.toList(), tagStyle, {
+                        when (it) { Templates.TagStyle.OUTLINE -> "לפי האותיות"; Templates.TagStyle.PLATE -> "מלבן"; Templates.TagStyle.ROUND -> "עגול" }
+                    }, { tagStyle = it })
                     ToggleRow("חור לטבעת", "למחזיק מפתחות. כבוי: שלט", keyring) { keyring = it }
                     Text("גובה אותיות: %.0f מ״מ".format(letterMm), color = C.Text, fontSize = 14.sp)
                     Slider(letterMm, { letterMm = it.toInt().toFloat() }, valueRange = 8f..30f, colors = sliderColors())
@@ -206,7 +215,7 @@ fun ExtraScreen() {
                 }
                 Creations.Kind.QR -> {}
             }
-            Text(if (kind.needsImage && kind != Creations.Kind.COOKIE || kind == Creations.Kind.QR) "גודל: 100 מ״מ בצלע הארוכה. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה."
+            Text(if ((kind.needsImage && kind != Creations.Kind.COOKIE && !(kind == Creations.Kind.LITHOPHANE && lamp)) || kind == Creations.Kind.QR) "גודל: 100 מ״מ בצלע הארוכה. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה."
                 else "המודל נשמר בגודל האמיתי שבחרת. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה.", color = C.Faint, fontSize = 12.sp)
             Creations.error?.let { Text(it, color = C.Red, fontSize = 13.sp) }
             Spacer(Modifier.height(4.dp))
@@ -230,8 +239,8 @@ fun ExtraScreen() {
                     Creations.Kind.COOKIE -> cookieMm
                     else -> stampMm
                 }
-                Creations.create(kind, image, text, Creations.Options(frame, maxMm, invert, reliefMm, flatBg, size, keyring, outline,
-                    stampImage, qrType, second, caption))
+                Creations.create(kind, image, text, Creations.Options(frame, maxMm, invert, reliefMm, flatBg, size, keyring, tagStyle,
+                    if (lamp) lampMm else 0f, stampImage, qrType, second, caption))
             }
         }
     }

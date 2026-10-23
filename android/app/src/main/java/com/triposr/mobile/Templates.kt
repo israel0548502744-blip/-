@@ -46,11 +46,11 @@ object Templates {
 
     // ------------------------------------------------------------------ name tag / keychain
 
-    enum class TagStyle { PLATE, OUTLINE }
+    enum class TagStyle { PLATE, OUTLINE, ROUND }
 
     /**
      * Raised text on a base. PLATE: a rounded rectangle; OUTLINE: the base follows the letters
-     * (2.5 mm around them), the popular "name keychain" look. [keyring] adds a ring with a 5 mm
+     * (2.5 mm around them), the popular "name keychain" look; ROUND: a disc, like a pet tag. [keyring] adds a ring with a 5 mm
      * hole on the left. Text is [textMm] above the [baseMm] base, so a filament change at the
      * base height prints it in a second colour.
      */
@@ -59,11 +59,21 @@ object Templates {
         val margin = (marginMm / cellMm).roundToInt()
         val holeR = 2.5f / cellMm; val ringR = holeR + 2.2f / cellMm
         val extraLeft = if (keyring) (2 * ringR).roundToInt() else 0
-        val t = text.cropped().padded(margin + 1)
+        var t = text.cropped().padded(margin + 1)
+        if (style == TagStyle.ROUND) {
+            // A disc around the text: pad to a square whose inscribed circle holds the text box.
+            val c = text.cropped()
+            val side = (hypot(c.w.toFloat(), c.h.toFloat()) + 2 * margin + 2).toInt()
+            t = Mask(side, side, BooleanArray(side * side) { i -> c[i % side - (side - c.w) / 2, i / side - (side - c.h) / 2] })
+        }
         val w = t.w + extraLeft; val h = t.h
         val letters = Mask(w, h, BooleanArray(w * h) { i -> t[i % w - extraLeft, i / w] })
         val base = when (style) {
             TagStyle.OUTLINE -> dilate(letters, margin.toFloat())
+            TagStyle.ROUND -> {
+                val cx0 = extraLeft + t.w / 2f; val r = t.w / 2f - 1
+                Mask(w, h, BooleanArray(w * h) { i -> hypot(i % w + 0.5f - cx0, i / w + 0.5f - h / 2f) <= r })
+            }
             TagStyle.PLATE -> {
                 val r = min(3f / cellMm, h / 2f - 1)
                 val x0 = extraLeft + 1f; val x1 = w - 2f; val y0 = 1f; val y1 = h - 2f

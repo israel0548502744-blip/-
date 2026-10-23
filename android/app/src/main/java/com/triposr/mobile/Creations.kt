@@ -35,7 +35,9 @@ object Creations {
         /** Name tag: letter height; cookie cutter / stamp: longest side. */
         val sizeMm: Float = 12f,
         val keyring: Boolean = true,
-        val outline: Boolean = true,
+        val tagStyle: Templates.TagStyle = Templates.TagStyle.OUTLINE,
+        /** Lithophane wrapped into a cylinder of this diameter (mm) for a lamp; 0 = flat. */
+        val cylinderMm: Float = 0f,
         /** Stamp: use the image (dark parts) instead of the text. */
         val stampImage: Boolean = false,
         val qrType: Templates.QrType = Templates.QrType.LINK,
@@ -90,10 +92,23 @@ object Creations {
     private fun widthFor(w: Int, h: Int) = SIZE_MM * (w - 1) / (maxOf(w, h) - 1)
 
     private fun lithophane(src: Bitmap, o: Options): Pair<Mesh, Bitmap> {
+        if (o.cylinderMm > 0f) return lithophaneLamp(src, o)
         var (px, w, h) = sample(src)
         if (o.invert) px = IntArray(px.size) { px[it] xor 0x00FFFFFF }
         val mesh = Heightfield.lithophane(px, w, h, widthMm = widthFor(w, h), maxMm = o.maxMm, frameMm = if (o.frame) 3f else 0f)
         return mesh to grey(src)
+    }
+
+    /** The photo all the way round a cylinder; the height follows the photo's proportions. */
+    private fun lithophaneLamp(src: Bitmap, o: Options): Pair<Mesh, Bitmap> {
+        val circumference = (Math.PI * o.cylinderMm).toFloat()
+        val w = 600; val h = (w * src.height / src.width.toFloat()).toInt().coerceAtLeast(8)
+        val b = Bitmap.createScaledBitmap(src, w, h, true)
+        var px = IntArray(w * h).also { b.getPixels(it, 0, w, 0, 0, w, h) }
+        if (o.invert) px = IntArray(px.size) { px[it] xor 0x00FFFFFF }
+        val heights = Heightfield.lithophaneHeights(px, w, h, circumference / w, 0.8f, o.maxMm, if (o.frame) 3f else 0f, sides = false)
+        val colors = FloatArray(w * h * 3) { val t = (heights[it / 3] - 0.8f) / (o.maxMm - 0.8f); 0.95f - 0.75f * t }
+        return Heightfield.cylinder(heights, w, h, circumference, colors) to grey(src)
     }
 
     private fun relief(src: Bitmap, o: Options): Pair<Mesh, Bitmap> {
@@ -175,7 +190,7 @@ object Creations {
         if (text.isBlank()) throw IllegalStateException("צריך להכניס שם או טקסט")
         // Font size ~1.4x the height of capital letters.
         val mask = textMask(text.trim(), (o.sizeMm * 1.4f / TEXT_CELL_MM).toInt())
-        val mesh = Templates.nameTag(mask, TEXT_CELL_MM, if (o.outline) Templates.TagStyle.OUTLINE else Templates.TagStyle.PLATE, o.keyring)
+        val mesh = Templates.nameTag(mask, TEXT_CELL_MM, o.tagStyle, o.keyring)
         return mesh to preview(mask)
     }
 

@@ -157,6 +157,55 @@ object Heightfield {
     }
 
     /**
+     * Lithophane wrapped into a cylinder (lamp shade / night light): column x goes around the
+     * circle (the last column joins the first), [heights] is the wall thickness outward from an
+     * inner radius of circumference / 2π. A closed tube: outer and inner walls plus top and
+     * bottom rings.
+     */
+    fun cylinder(heights: FloatArray, w: Int, h: Int, circumferenceMm: Float, colors: FloatArray? = null): Mesh {
+        val r = circumferenceMm / (2 * Math.PI.toFloat())
+        val cell = circumferenceMm / w
+        val n = w * h
+        val pos = FloatArray(n * 2 * 3)
+        val col = FloatArray(n * 2 * 3)
+        for (y in 0 until h) for (x in 0 until w) {
+            val i = y * w + x
+            val a = 2 * Math.PI * x / w
+            val z = (h - 1 - y) * cell
+            for ((layer, rad) in listOf(0 to r + heights[i], 1 to r)) {
+                val v = (layer * n + i) * 3
+                pos[v] = (rad * kotlin.math.cos(a)).toFloat(); pos[v + 1] = (rad * kotlin.math.sin(a)).toFloat(); pos[v + 2] = z
+                if (colors != null) System.arraycopy(colors, i * 3, col, v, 3) else { col[v] = 0.85f; col[v + 1] = 0.85f; col[v + 2] = 0.88f }
+            }
+        }
+        val tri = IntList()
+        fun quad(a: Int, b: Int, c: Int, d: Int) { tri.add(a); tri.add(b); tri.add(c); tri.add(a); tri.add(c); tri.add(d) }
+        fun out(x: Int, y: Int) = y * w + x % w
+        fun inn(x: Int, y: Int) = n + y * w + x % w
+        for (x in 0 until w) {
+            for (y in 0 until h - 1) {
+                quad(out(x, y), out(x, y + 1), out(x + 1, y + 1), out(x + 1, y))
+                quad(inn(x, y), inn(x + 1, y), inn(x + 1, y + 1), inn(x, y + 1))
+            }
+            quad(out(x, 0), out(x + 1, 0), inn(x + 1, 0), inn(x, 0))                     // top ring
+            quad(out(x, h - 1), inn(x, h - 1), inn(x + 1, h - 1), out(x + 1, h - 1))     // bottom ring
+        }
+        return finish(pos, col, tri.toArray())
+    }
+
+    /** Thickness map of a lithophane (dark = thick) with an optional full-thickness frame. */
+    fun lithophaneHeights(px: IntArray, w: Int, h: Int, cellMm: Float, minMm: Float, maxMm: Float, frameMm: Float,
+                          sides: Boolean = true): FloatArray {
+        val lum = luminance(px)
+        val frame = (frameMm / cellMm).toInt()
+        return FloatArray(w * h) { i ->
+            val x = i % w; val y = i / w
+            if (y < frame || y >= h - frame || (sides && (x < frame || x >= w - frame))) maxMm
+            else minMm + (1f - lum[i]) * (maxMm - minMm)
+        }
+    }
+
+    /**
      * Relief: a base plate with the subject raised by its depth ([depth] 0..1, 1 = nearest),
      * coloured with the photo. [mask] (0..1, optional) keeps the background flat.
      */
