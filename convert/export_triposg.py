@@ -501,7 +501,7 @@ def reference(pipe, image, steps, out, isnet=None, seed=0):
     v, f, _, _ = measure.marching_cubes(vals, 0.0)
     v = v / r * 2 * BOUNDS - BOUNDS
     import trimesh
-    trimesh.Trimesh(v, f[:, ::-1]).export(os.path.join(out, "reference.glb"))
+    trimesh.Trimesh(v, f).export(os.path.join(out, "reference.glb"))
     np.save(os.path.join(out, "reference_latents.npy"), lat.numpy())
     print(f"reference mesh: {len(v)} vertices, {len(f)} faces", flush=True)
 
