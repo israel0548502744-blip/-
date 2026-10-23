@@ -444,6 +444,7 @@ fun SettingsScreen() {
                 if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל · ${ModelStore.sizeOnDisk(ctx) shr 20} MB",
                     Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
             }
+            ModelPacksSection()
             ExtrasSection()
             Section(title = "ברירות מחדל") {
                 Text("מעבד", color = C.Sub, fontSize = 13.sp)

@@ -66,7 +66,17 @@ object Settings {
     fun densityThreshold(ctx: Context) = prefs(ctx).getFloat("density_threshold", TripoEngine.DENSITY_THRESHOLD)
     fun setDensityThreshold(ctx: Context, v: Float) = prefs(ctx).edit().putFloat("density_threshold", v).apply()
 
-    fun resetAdvanced(ctx: Context) = prefs(ctx).edit().remove("smooth_strength").remove("density_threshold").apply()
+    fun resetAdvanced(ctx: Context) = prefs(ctx).edit().remove("smooth_strength").remove("density_threshold").remove("sg_steps").apply()
+
+    /** Which model generates the shape; falls back to TripoSR when the chosen pack is missing. */
+    fun generator(ctx: Context): Generator = prefs(ctx).getString("generator", null)
+        ?.let { runCatching { Generator.valueOf(it) }.getOrNull() }?.takeIf { it.ready(ctx) } ?: Generator.TRIPOSR
+    fun setGenerator(ctx: Context, g: Generator) = prefs(ctx).edit().putString("generator", g.name).apply()
+
+    /** Advanced, TripoSG only: denoising steps. Fewer is faster; 25 is close to the original 50. */
+    fun sgSteps(ctx: Context) = prefs(ctx).getInt("sg_steps", DEFAULT_SG_STEPS)
+    fun setSgSteps(ctx: Context, v: Int) = prefs(ctx).edit().putInt("sg_steps", v).apply()
+    const val DEFAULT_SG_STEPS = 25
 
     const val DEFAULT_SMOOTH = 3
 
@@ -76,7 +86,8 @@ object Settings {
 
     fun describe(ctx: Context) =
         "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, " +
-            "smooth=${smooth(ctx)}x${smoothStrength(ctx)}, density=${densityThreshold(ctx)}, texture=${bakeTexture(ctx)}"
+            "smooth=${smooth(ctx)}x${smoothStrength(ctx)}, density=${densityThreshold(ctx)}, texture=${bakeTexture(ctx)}, " +
+            "generator=${generator(ctx)}, sgSteps=${sgSteps(ctx)}"
 }
 
 enum class Quality(val label: String, val resolution: Int, val hint: String) {
@@ -85,6 +96,25 @@ enum class Quality(val label: String, val resolution: Int, val hint: String) {
     HIGH("גבוהה", 256, "מפורט, איטי יותר"),
     /** Twice the samples of HIGH. Surfaces get a little smoother; detail is capped by the model itself. */
     MAX("מקסימלית", 320, "משטח חלק יותר, פי 2 זמן. מומלץ עם NPU/GPU"),
+}
+
+/** The image-to-3D models the user can choose from; each needs its pack downloaded. */
+enum class Generator(val label: String, val hint: String, val stages: List<Stage>) {
+    TRIPOSR("TripoSR", "מהיר, עם צבעים וטקסטורה",
+        listOf(Stage.LOAD, Stage.SEGMENT, Stage.ENCODE, Stage.FIELD, Stage.SURFACE, Stage.COLOR, Stage.TEXTURE)),
+    TRIPOSG("TripoSG", "צורה מדויקת יותר, בלי צבע. ניסיוני, NPU בלבד",
+        listOf(Stage.SEGMENT, Stage.ENCODE, Stage.DENOISE, Stage.FIELD, Stage.SURFACE, Stage.COLOR));
+
+    val pack: Pack get() = when (this) {
+        TRIPOSR -> ModelStore.MAIN
+        TRIPOSG -> ModelStore.TRIPOSG
+    }
+
+    fun ready(ctx: Context) = ModelStore.isReady(ctx, pack)
+
+    companion object {
+        fun available(ctx: Context) = entries.filter { it.ready(ctx) }
+    }
 }
 
 /** A set of files downloaded together from the models release. */
@@ -103,6 +133,8 @@ object ModelStore {
     val FILES = listOf(TripoEngine.ENCODER, TripoEngine.DECODER)
     val MAIN = Pack("models", "TripoSR — מודל תלת־ממד") { FILES }
     val NPU = Pack("npu", "TripoSR — חבילת NPU") { NpuPack.files() }
+    /** TripoSG compiled for this chip's NPU (experimental, ~3 GB). Only offered on supported chips. */
+    val TRIPOSG = Pack("triposg", "TripoSG — מודל צורה מדויק", "triposg-v1") { NpuPack.chip()?.let { SgEngine.files(it) } ?: emptyList() }
 
     sealed interface Status {
         data object Missing : Status
@@ -211,7 +243,7 @@ object ModelStore {
     fun sizeOnDisk(ctx: Context, pack: Pack = MAIN) = pack.files().sumOf { file(ctx, it).length() }
 
     fun describe(ctx: Context) = buildString {
-        for (pack in listOf(MAIN, NPU) + Extras.all.map { it.pack }) {
+        for (pack in listOf(MAIN, NPU, TRIPOSG) + Extras.all.map { it.pack }) {
             append("${pack.key}: ${if (isReady(ctx, pack)) "ready" else "not ready"}")
             pack.files().forEach { append(", $it=${file(ctx, it).length() shr 20}MB/${prefs(ctx, pack).getLong("size_$it", -1) shr 20}MB") }
             append("; ")

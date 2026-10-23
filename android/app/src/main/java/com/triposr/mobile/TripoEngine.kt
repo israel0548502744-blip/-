@@ -22,6 +22,7 @@ enum class Stage(val label: String, val weight: Float) {
     LOAD("טעינת המודל", 0.10f),
     SEGMENT("הסרת רקע", 0.05f),
     ENCODE("ניתוח התמונה", 0.20f),
+    DENOISE("בניית הצורה (TripoSG)", 0.70f),
     FIELD("בניית שדה תלת־ממד", 0.35f),
     SURFACE("יצירת רשת פוליגונים", 0.08f),
     COLOR("צביעה והחלקה", 0.07f),

@@ -38,17 +38,19 @@ data class JobState(
     val done: Boolean = false,
     val startedAt: Long = System.currentTimeMillis(),
     val backend: Backend = Backend.GPU,
+    /** Stages this job goes through (they differ per generator). */
+    val plan: List<Stage> = Generator.TRIPOSR.stages,
 ) {
     /** 0..1 over the whole pipeline, weighted by how long each stage usually takes. */
     val overall: Float
         get() {
             if (done) return 1f
             var sum = 0f
-            for (s in Stage.entries) {
+            for (s in plan) {
                 if (s.ordinal < stage.ordinal) sum += s.weight
                 else if (s == stage) sum += s.weight * stageProgress
             }
-            return sum.coerceIn(0f, 1f)
+            return (sum / plan.sumOf { it.weight.toDouble() }.toFloat()).coerceIn(0f, 1f)
         }
 }
 
@@ -64,6 +66,8 @@ class Preview(
     val points: List<Pair<Float, Float>> = emptyList(),
     /** [work] with everything outside the selection dimmed, shown while tapping. */
     val selection: Bitmap? = null,
+    /** [work] with the foreground as alpha, before framing (TripoSG frames it its own way). */
+    val cut: Bitmap? = null,
 )
 
 data class Project(
@@ -79,7 +83,7 @@ data class Project(
     val timings: Map<String, Double> = emptyMap(),
 ) {
     /** Image -> mesh with vertex colors (encode, density field, surface, colors). */
-    val geometrySeconds: Double get() = listOf(Stage.ENCODE, Stage.FIELD, Stage.SURFACE, Stage.COLOR).sumOf { timings[it.name] ?: 0.0 }
+    val geometrySeconds: Double get() = listOf(Stage.ENCODE, Stage.DENOISE, Stage.FIELD, Stage.SURFACE, Stage.COLOR).sumOf { timings[it.name] ?: 0.0 }
     val textureSeconds: Double? get() = timings[Stage.TEXTURE.name]
 
     fun dir(ctx: Context) = File(File(ctx.filesDir, "projects"), id)
@@ -233,7 +237,7 @@ object AppState {
         val check = Preprocess.check(work, cut, removeBackground || points.isNotEmpty(), sourceInfo)
         CrashLog.log("Preview in %.2fs: removeBg=$removeBackground taps=${points.size} extras=${Extras.describe(app)} issues=${check.issues} ".format((System.nanoTime() - t0) / 1e9) +
             check.stats.entries.joinToString { "%s=%.3f".format(it.key, it.value) })
-        return Preview(img, removeBackground, framed, check.issues, work, points, selection)
+        return Preview(img, removeBackground, framed, check.issues, work, points, selection, cut)
     }
 
     private fun dimOutside(src: Bitmap, mask: IntArray): Bitmap {
@@ -250,16 +254,22 @@ object AppState {
         val image = input ?: return
         if (runningJob?.isActive == true) return
         cancelRequested = false
-        job = JobState(backend = choice ?: Capabilities.best(app), status = "מתחיל...")
+        val generator = Settings.generator(app)
+        job = JobState(backend = if (generator == Generator.TRIPOSG) Backend.NPU else choice ?: Capabilities.best(app),
+            status = "מתחיל...", plan = generator.stages)
         navigate(Screen.Processing)
         ProcessingService.start(app)
-        CrashLog.log("Job start: backend=${choice ?: "AUTO"} quality=$quality removeBg=$removeBackground smooth=$smooth " +
+        CrashLog.log("Job start: generator=$generator backend=${choice ?: "AUTO"} quality=$quality removeBg=$removeBackground smooth=$smooth " +
             "image=${image.width}x${image.height}")
 
         runningJob = scope.launch {
             try {
                 fun stage(s: Stage, p: Float, status: String = s.label) {
                     job = job?.copy(stage = s, stageProgress = p, status = status)
+                }
+                if (generator == Generator.TRIPOSG) {
+                    runTripoSG(image, removeBackground, smooth) { s, p -> stage(s, p) }
+                    return@launch
                 }
                 stage(Stage.LOAD, 0f)
                 if (!ModelStore.isReady(app)) throw IllegalStateException("צריך להוריד את המודל קודם (מסך הבית)")
@@ -302,20 +312,7 @@ object AppState {
                 val timings = LinkedHashMap<String, Double>()
                 timings[Stage.SEGMENT.name] = segSeconds
                 for ((s, t) in out.timings) timings[s.name] = t
-                val p = saveProject(out.mesh, frame, eng.encoderBackend.short, quality.label,
-                    (System.currentTimeMillis() - job!!.startedAt) / 1000.0, timings)
-                CrashLog.log(("Job done in %.1fs (pipeline %.1fs): geometry %.2fs, texture %s, ${out.mesh.triangleCount} triangles, " +
-                    "texture ${out.mesh.texture?.size ?: 0}px").format(p.seconds, seconds, p.geometrySeconds,
-                    p.textureSeconds?.let { "%.2fs".format(it) } ?: "off"))
-                withContext(Dispatchers.Main) {
-                    originalMesh = out.mesh
-                    mesh = out.mesh
-                    project = p
-                    input = null // the next "create" starts from a fresh image
-                    preview = null
-                    job = job?.copy(done = true, stageProgress = 1f, status = "המודל מוכן!")
-                    if (screen == Screen.Processing) showResult()
-                }
+                finish(out.mesh, frame, eng.encoderBackend.short, quality.label, timings, seconds)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 CrashLog.log("Job cancelled")
                 job = null
@@ -330,6 +327,42 @@ object AppState {
                 ProcessingService.finished(app)
             }
         }
+    }
+
+    private suspend fun finish(m: Mesh, thumb: Bitmap, backend: String, quality: String, timings: Map<String, Double>, seconds: Double) {
+        val p = saveProject(m, thumb, backend, quality, (System.currentTimeMillis() - job!!.startedAt) / 1000.0, timings)
+        CrashLog.log(("Job done in %.1fs (pipeline %.1fs): geometry %.2fs, texture %s, ${m.triangleCount} triangles, " +
+            "texture ${m.texture?.size ?: 0}px").format(p.seconds, seconds, p.geometrySeconds,
+            p.textureSeconds?.let { "%.2fs".format(it) } ?: "off"))
+        withContext(Dispatchers.Main) {
+            originalMesh = m
+            mesh = m
+            project = p
+            input = null // the next "create" starts from a fresh image
+            preview = null
+            job = job?.copy(done = true, stageProgress = 1f, status = "המודל מוכן!")
+            if (screen == Screen.Processing) showResult()
+        }
+    }
+
+    /** TripoSG on the NPU: background removal as usual, then its own framing and pipeline. */
+    private suspend fun runTripoSG(image: Bitmap, removeBackground: Boolean, smooth: Boolean, stage: (Stage, Float) -> Unit) {
+        stage(Stage.SEGMENT, 0f)
+        val segStart = System.nanoTime()
+        val ready = preview?.takeIf { it.source === image && it.cut != null && (it.points.isNotEmpty() || it.removeBackground == removeBackground) }
+        val pv = ready ?: makePreview(image, removeBackground, tapPoints)
+        framed = pv.framed
+        val segSeconds = (System.nanoTime() - segStart) / 1e9
+        val steps = Settings.sgSteps(app)
+        val t0 = System.nanoTime()
+        val out = SgEngine(app).use { sg ->
+            sg.generate(pv.cut!!, steps, seed = 0L, smoothIterations = if (smooth) Settings.smoothStrength(app) else 0,
+                progress = stage, cancelled = { cancelRequested })
+        }
+        val timings = LinkedHashMap<String, Double>()
+        timings[Stage.SEGMENT.name] = segSeconds
+        for ((s, t) in out.timings) timings[s.name] = t
+        finish(out.mesh, pv.framed, "NPU", "TripoSG · $steps צעדים", timings, (System.nanoTime() - t0) / 1e9)
     }
 
     /** The "+" / "create" entry point: shows the running job, or a fresh create screen. */

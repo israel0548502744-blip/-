@@ -96,6 +96,7 @@ import com.triposr.mobile.TripoEngine
 import com.triposr.mobile.Backend
 import com.triposr.mobile.Capabilities
 import com.triposr.mobile.CrashLog
+import com.triposr.mobile.Generator
 import com.triposr.mobile.ImageIssue
 import com.triposr.mobile.ModelStore
 import com.triposr.mobile.Project
@@ -491,6 +492,8 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
     var quality by remember { mutableStateOf(Settings.quality(ctx)) }
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
     var smooth by remember { mutableStateOf(Settings.smooth(ctx)) }
+    var generator by remember { mutableStateOf(Settings.generator(ctx)) }
+    val generators = remember { Generator.available(ctx) }
     var sourceMenu by remember { mutableStateOf(false) }
     var showOriginal by remember { mutableStateOf(false) }
     var tapMode by remember { mutableStateOf(false) }
@@ -583,12 +586,18 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                 }
             }
 
-            Section(Modifier.enter(2), title = "מעבד") {
-                BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
+            if (generators.size > 1) Section(Modifier.enter(2), title = "מודל") {
+                Segmented(generators, generator, { it.label }, { generator = it; Settings.setGenerator(ctx, it) })
+                Text(generator.hint, color = C.Sub, fontSize = 12.sp)
             }
-            Section(Modifier.enter(3), title = "רמת פירוט") {
-                Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
-                Text("${quality.resolution}³ · ${quality.hint}", color = C.Sub, fontSize = 12.sp)
+            if (generator == Generator.TRIPOSR) {
+                Section(Modifier.enter(2), title = "מעבד") {
+                    BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
+                }
+                Section(Modifier.enter(3), title = "רמת פירוט") {
+                    Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
+                    Text("${quality.resolution}³ · ${quality.hint}", color = C.Sub, fontSize = 12.sp)
+                }
             }
             Section(Modifier.enter(4)) {
                 ToggleRow("הסרת רקע אוטומטית", "מומלץ, אלא אם התמונה כבר בלי רקע", removeBg) {
@@ -598,16 +607,17 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                     smooth = it; Settings.setSmooth(ctx, it)
                 }
             }
-            AdvancedOptions(smooth)
+            AdvancedOptions(smooth, generator)
             Spacer(Modifier.height(4.dp))
         }
         Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
-            if (status !is ModelStore.Status.Ready) {
+            val modelReady = status is ModelStore.Status.Ready || generator == Generator.TRIPOSG
+            if (!modelReady) {
                 Text("קודם צריך להוריד את המודל (במסך הבית)", color = C.Amber, fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), textAlign = TextAlign.Center)
             }
             GradientButton("צור מודל 3D", Modifier.fillMaxWidth(), sparkles = true,
-                enabled = image != null && status is ModelStore.Status.Ready && !AppState.isRunning) {
+                enabled = image != null && modelReady && !AppState.isRunning) {
                 AppState.start(backend, quality, removeBg, smooth)
             }
         }
@@ -620,9 +630,10 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
  * result, so they stay at TripoSR's values.
  */
 @Composable
-private fun AdvancedOptions(smoothOn: Boolean) {
+private fun AdvancedOptions(smoothOn: Boolean, generator: Generator) {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
+    var steps by remember { mutableFloatStateOf(Settings.sgSteps(ctx).toFloat()) }
     var strength by remember { mutableFloatStateOf(Settings.smoothStrength(ctx).toFloat()) }
     var density by remember { mutableFloatStateOf(Settings.densityThreshold(ctx)) }
     Section {
@@ -642,15 +653,24 @@ private fun AdvancedOptions(smoothOn: Boolean) {
                 Text(if (smoothOn) "גבוה מעלים את \"הטבעות\" על המשטח, שמודפסות כפסים. נמוך שומר על פרטים קטנים."
                     else "מופעל רק כשהחלקת משטח דולקת.", color = C.Sub, fontSize = 12.sp)
                 Spacer(Modifier.height(6.dp))
-                Text("עובי ומילוי: %.0f".format(density) + if (density == TripoEngine.DENSITY_THRESHOLD) " (ברירת מחדל)" else "",
-                    color = C.Text, fontSize = 14.sp)
-                Slider(density, { density = it.roundToInt().toFloat() }, valueRange = 5f..50f,
-                    onValueChangeFinished = { Settings.setDensityThreshold(ctx, density) }, colors = sliderColors())
-                Text("נמוך: מודל מלא יותר וחלקים דקים עבים יותר, טוב להדפסה. גבוה: מודל רזה וחד יותר.",
-                    color = C.Sub, fontSize = 12.sp)
+                if (generator == Generator.TRIPOSG) {
+                    Text("צעדי בנייה: ${steps.roundToInt()}" + if (steps.roundToInt() == Settings.DEFAULT_SG_STEPS) " (ברירת מחדל)" else "",
+                        color = C.Text, fontSize = 14.sp)
+                    Slider(steps, { steps = it.roundToInt().toFloat() }, valueRange = 10f..50f,
+                        onValueChangeFinished = { Settings.setSgSteps(ctx, steps.roundToInt()) }, colors = sliderColors())
+                    Text("יותר צעדים: צורה נקייה יותר אבל לאט יותר. הזמן עולה בערך ביחס ישר.", color = C.Sub, fontSize = 12.sp)
+                } else {
+                    Text("עובי ומילוי: %.0f".format(density) + if (density == TripoEngine.DENSITY_THRESHOLD) " (ברירת מחדל)" else "",
+                        color = C.Text, fontSize = 14.sp)
+                    Slider(density, { density = it.roundToInt().toFloat() }, valueRange = 5f..50f,
+                        onValueChangeFinished = { Settings.setDensityThreshold(ctx, density) }, colors = sliderColors())
+                    Text("נמוך: מודל מלא יותר וחלקים דקים עבים יותר, טוב להדפסה. גבוה: מודל רזה וחד יותר.",
+                        color = C.Sub, fontSize = 12.sp)
+                }
                 SoftButton("אפס לברירת מחדל", Modifier.fillMaxWidth()) {
                     Settings.resetAdvanced(ctx)
                     strength = Settings.DEFAULT_SMOOTH.toFloat(); density = TripoEngine.DENSITY_THRESHOLD
+                    steps = Settings.DEFAULT_SG_STEPS.toFloat()
                 }
             }
         }
@@ -735,13 +755,13 @@ fun ProcessingScreen() {
             }
 
             Section(Modifier.enter(2)) {
-                for (s in Stage.entries) {
+                for (s in job.plan) {
                     val st = when {
                         job.done || s.ordinal < job.stage.ordinal -> StepState.DONE
                         s == job.stage && job.error == null -> StepState.ACTIVE
                         else -> StepState.PENDING
                     }
-                    StepRow(s.label, st, if (st == StepState.ACTIVE && s.ordinal >= Stage.FIELD.ordinal)
+                    StepRow(s.label, st, if (st == StepState.ACTIVE && s.ordinal >= Stage.DENOISE.ordinal)
                         "${(job.stageProgress * 100).toInt()}%" else null)
                 }
             }

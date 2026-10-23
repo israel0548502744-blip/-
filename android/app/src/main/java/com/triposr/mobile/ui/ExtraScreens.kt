@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.QrCode2
@@ -60,7 +61,9 @@ import com.triposr.mobile.CrashLog
 import com.triposr.mobile.Creations
 import com.triposr.mobile.Enhance
 import com.triposr.mobile.Extras
+import com.triposr.mobile.Generator
 import com.triposr.mobile.ModelStore
+import com.triposr.mobile.Settings
 import kotlinx.coroutines.launch
 
 /** Lithophane, relief and QR plates: printable products that don't depend on 3D reconstruction. */
@@ -171,6 +174,58 @@ fun ExtrasSection() {
     Section(title = "שיפורים להורדה (לא חובה)") {
         Text("מודלים נוספים שמשפרים את התוצאה. כל אחד יורד רק אם תבחר בו, ואפשר למחוק בכל רגע.", color = C.Sub, fontSize = 12.sp)
         for (e in Extras.all) ExtraRow(e, rememberModelStatus(e.pack))
+    }
+}
+
+/** Extra image-to-3D models (Settings). Only on chips with a pack compiled in CI. */
+@Composable
+fun ModelPacksSection() {
+    if (com.triposr.mobile.NpuPack.chip() == null) return
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pack = ModelStore.TRIPOSG
+    val status = rememberModelStatus(pack)
+    var size by remember { mutableStateOf<Long?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { size = runCatching { ModelStore.availableSize(pack) }.getOrNull() }
+    Section(title = "מודלים נוספים") {
+        Text("אחרי ההורדה אפשר לבחור במסך היצירה איזה מודל יבנה את התלת־ממד.", color = C.Sub, fontSize = 12.sp)
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Icons.Rounded.Memory, 36.dp, C.Accent)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("TripoSG · ניסיוני", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("צורה מדויקת וחדה יותר מ-TripoSR, בלי צבע. רץ על ה-NPU, כדקה למודל.", color = C.Sub, fontSize = 12.sp)
+                }
+            }
+            when (status) {
+                ModelStore.Status.Ready ->
+                    SoftButton("מחק · ${ModelStore.sizeOnDisk(ctx, pack) shr 20} MB", Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) {
+                        if (Settings.generator(ctx) == Generator.TRIPOSG) Settings.setGenerator(ctx, Generator.TRIPOSR)
+                        ModelStore.delete(ctx, pack)
+                    }
+                is ModelStore.Status.Downloading -> {
+                    GlowBar(status.done.toFloat() / status.total, Modifier.fillMaxWidth(), C.Primary)
+                    SoftButton("בטל", Modifier.fillMaxWidth()) { ModelStore.cancel(ctx, pack) }
+                }
+                else -> {
+                    if (status is ModelStore.Status.Failed) Text(status.message, color = C.Red, fontSize = 12.sp)
+                    if (size == null) Text("החבילה עוד לא פורסמה לשבב הזה", color = C.Faint, fontSize = 12.sp)
+                    SoftButton("הורד" + (size?.let { " · ${it shr 20} MB" } ?: ""), Modifier.fillMaxWidth(),
+                        Icons.Rounded.CloudDownload, enabled = size != null) {
+                        err = null
+                        scope.launch {
+                            runCatching { ModelStore.startDownload(ctx, pack) }
+                                .onFailure { CrashLog.error("TripoSG download", it); err = it.message }
+                        }
+                    }
+                }
+            }
+            err?.let { Text(it, color = C.Red, fontSize = 12.sp) }
+            Text("רישיון: MIT (VAST-AI-Research). חלקים מקוד המודל מבוססים על Tencent Hunyuan.", color = C.Faint, fontSize = 11.sp)
+        }
     }
 }
 
