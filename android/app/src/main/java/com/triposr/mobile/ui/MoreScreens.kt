@@ -246,6 +246,7 @@ fun ResultScreen() {
                     ExportFormat.OBJ -> "Blender, Maya ותוכנות עריכה (צבע לכל קודקוד, בלי הטקסטורה)"
                     ExportFormat.STL -> "להדפסה: מתוקן, במילימטרים, עומד על הבסיס (בלי צבע)"
                     ExportFormat.THREE_MF -> "הפורמט של תוכנות ההדפסה: מתוקן, במילימטרים, עומד על הבסיס"
+                    ExportFormat.SVG -> "לחותך לייזר, ויניל או Cricut: קו חיתוך אדום וחלקים בולטים בשחור לחריטה, במילימטרים"
                     ExportFormat.WRL -> "הדפסה בצבע מלא (שירותי הדפסה, מדפסות צבע): מתוקן, במילימטרים, עם הצבעים"
                     ExportFormat.PLY -> "סריקות ו-MeshLab, צבע לכל קודקוד (בלי הטקסטורה)"
                 }, color = C.Sub, fontSize = 12.sp)

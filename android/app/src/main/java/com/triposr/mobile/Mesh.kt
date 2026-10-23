@@ -18,6 +18,9 @@ class Mesh(
     /** Real size (longest side, mm) for parts designed to measure, e.g. a keychain; null = scale to the default. */
     var sizeMm: Float? = null
 
+    /** Top-view height grid of 2D-designed parts (templates, QR), for SVG cutter export; null otherwise. */
+    var plan: Plan? = null
+
     /** Copies the texture of [from] when the triangles are unchanged (same indices). */
     fun withTextureOf(from: Mesh): Mesh {
         if (indices === from.indices || indices.contentEquals(from.indices)) { uvs = from.uvs; texture = from.texture }
@@ -266,3 +269,6 @@ class IntList {
     fun add(x: Int) { if (size == data.size) data = data.copyOf(size * 2); data[size++] = x }
     fun toArray() = data.copyOf(size)
 }
+
+/** A height grid seen from above: [w]×[h] cells of [cellMm], row 0 at the back (top of an SVG). */
+class Plan(val w: Int, val h: Int, val cellMm: Float, val heights: FloatArray)

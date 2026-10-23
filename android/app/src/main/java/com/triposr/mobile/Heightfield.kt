@@ -96,7 +96,7 @@ object Heightfield {
                 }
             }
         }
-        return finish(pos.toArray(), col.toArray(), tri.toArray())
+        return finish(pos.toArray(), col.toArray(), tri.toArray()).also { it.plan = Plan(w, h, cellMm, cellHeight.copyOf()) }
     }
 
     private fun levelBelowTop(levels: List<Float>, z: Float): Float {

@@ -21,11 +21,13 @@ enum class ExportFormat(val ext: String, val mime: String, val label: String, va
     THREE_MF("3mf", "model/3mf", "3MF", false),
     /** VRML 97 with per-vertex colours, in millimetres: what full-colour print services take. */
     WRL("wrl", "model/vrml", "WRL", false),
+    /** Outline (cut) and raised parts (engrave) of 2D-designed parts, in millimetres, for laser and vinyl cutters. */
+    SVG("svg", "image/svg+xml", "SVG", false),
     PLY("ply", "application/octet-stream", "PLY", false);
 
     companion object {
         /** OBJ_ZIP only makes sense when there is a texture to put in it. */
-        fun available(mesh: Mesh) = entries.filter { it != OBJ_ZIP || mesh.texture != null }
+        fun available(mesh: Mesh) = entries.filter { (it != OBJ_ZIP || mesh.texture != null) && (it != SVG || mesh.plan != null) }
     }
 }
 
@@ -151,7 +153,71 @@ object MeshTools {
         ExportFormat.STL -> writeStl(Printability.prepared(mesh).mesh, out)
         ExportFormat.THREE_MF -> Printability.write3mf(Printability.prepared(mesh).mesh, out)
         ExportFormat.WRL -> writeVrml(Printability.prepared(mesh).mesh, out)
+        ExportFormat.SVG -> out.write(planSvg(mesh.plan!!).toByteArray())
         ExportFormat.PLY -> writePly(mesh, out)
+    }
+
+    /**
+     * SVG of a [Plan]: the part's outline as red cut lines and its raised areas (letters, QR
+     * modules) filled black for engraving. Boundaries are traced along cell edges into closed
+     * loops (even-odd fill keeps holes).
+     */
+    fun planSvg(p: Plan): String {
+        val solid = BooleanArray(p.w * p.h) { p.heights[it] > 0f }
+        val base = p.heights.filter { it > 0f }.minOrNull() ?: 0f
+        val raised = BooleanArray(p.w * p.h) { p.heights[it] > base + 1e-4f }
+        val c = p.cellMm
+        fun f(x: Float) = "%.3f".format(java.util.Locale.US, x)
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"${f(p.w * c)}mm\" height=\"${f(p.h * c)}mm\" viewBox=\"0 0 ${f(p.w * c)} ${f(p.h * c)}\">\n")
+        if (raised.any { it }) sb.append(" <path id=\"engrave\" fill=\"#000\" fill-rule=\"evenodd\" d=\"${loops(raised, p.w, p.h, c)}\"/>\n")
+        sb.append(" <path id=\"cut\" fill=\"none\" stroke=\"#f00\" stroke-width=\"0.1\" d=\"${loops(solid, p.w, p.h, c)}\"/>\n")
+        sb.append("</svg>\n")
+        return sb.toString()
+    }
+
+    /** Closed boundary loops of the set cells as SVG path data (corners only). */
+    private fun loops(m: BooleanArray, w: Int, h: Int, c: Float): String {
+        fun set(x: Int, y: Int) = x in 0 until w && y in 0 until h && m[y * w + x]
+        fun key(x: Int, y: Int) = y.toLong() * (w + 1) + x
+        // Directed boundary edges, solid on the right when walking (screen coordinates).
+        val next = HashMap<Long, ArrayList<Long>>()
+        fun edge(x0: Int, y0: Int, x1: Int, y1: Int) { next.getOrPut(key(x0, y0)) { ArrayList(1) }.add(key(x1, y1)) }
+        for (y in 0 until h) for (x in 0 until w) if (m[y * w + x]) {
+            if (!set(x, y - 1)) edge(x, y, x + 1, y)
+            if (!set(x + 1, y)) edge(x + 1, y, x + 1, y + 1)
+            if (!set(x, y + 1)) edge(x + 1, y + 1, x, y + 1)
+            if (!set(x - 1, y)) edge(x, y + 1, x, y)
+        }
+        val sb = StringBuilder()
+        fun fmt(k: Long) = "%.3f %.3f".format(java.util.Locale.US, (k % (w + 1)) * c, (k / (w + 1)) * c)
+        while (next.isNotEmpty()) {
+            val start = next.keys.first()
+            val pts = ArrayList<Long>()
+            var cur = start
+            while (true) {
+                pts.add(cur)
+                val outs = next[cur] ?: break
+                val nx = outs.removeAt(outs.size - 1)
+                if (outs.isEmpty()) next.remove(cur)
+                cur = nx
+                if (cur == start) break
+            }
+            // Keep only corners (direction changes).
+            val n = pts.size
+            var first = true
+            for (i in 0 until n) {
+                val a = pts[(i - 1 + n) % n]; val b = pts[i]; val d = pts[(i + 1) % n]
+                val dx1 = (b % (w + 1)) - (a % (w + 1)); val dy1 = (b / (w + 1)) - (a / (w + 1))
+                val dx2 = (d % (w + 1)) - (b % (w + 1)); val dy2 = (d / (w + 1)) - (b / (w + 1))
+                if (dx1 == dx2 && dy1 == dy2) continue
+                sb.append(if (first) "M" else "L").append(fmt(b)).append(' ')
+                first = false
+            }
+            if (!first) sb.append("Z ")
+        }
+        return sb.toString().trim()
     }
 
     /** VRML 97 IndexedFaceSet with colorPerVertex, coordinates in millimetres. */
@@ -240,6 +306,12 @@ object MeshTools {
         }
         val texFile = File(file.parentFile, "texture.bin")
         if (uvs != null) mesh.texture!!.save(texFile) else texFile.delete()
+        val planFile = File(file.parentFile, "plan.bin")
+        mesh.plan?.let { p ->
+            val b = ByteBuffer.allocate(12 + p.heights.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+            b.putInt(p.w).putInt(p.h).putFloat(p.cellMm); b.asFloatBuffer().put(p.heights)
+            planFile.writeBytes(b.array())
+        } ?: planFile.delete()
         val sizeFile = File(file.parentFile, "size_mm.txt")
         mesh.sizeMm?.let { sizeFile.writeText(it.toString()) } ?: sizeFile.delete()
         buf.rewind()
@@ -264,6 +336,11 @@ object MeshTools {
             ByteBuffer.wrap(bytes, uvAt + 4, ni * 8).slice().order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(uvs)
             val tex = Texture.load(File(file.parentFile, "texture.bin"))
             if (tex != null) { mesh.uvs = uvs; mesh.texture = tex }
+        }
+        File(file.parentFile, "plan.bin").takeIf { it.exists() }?.let { f ->
+            val b = ByteBuffer.wrap(f.readBytes()).order(ByteOrder.LITTLE_ENDIAN)
+            val w = b.int; val h = b.int; val cell = b.float
+            mesh.plan = Plan(w, h, cell, FloatArray(w * h).also { b.asFloatBuffer().get(it) })
         }
         mesh.sizeMm = File(file.parentFile, "size_mm.txt").takeIf { it.exists() }?.readText()?.toFloatOrNull()
         return mesh

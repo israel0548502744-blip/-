@@ -26,3 +26,30 @@ Downloadable, selectable generators in addition to TripoSR: TripoSG (MIT), PartC
 multi-part, built on TripoSG), Step1X-3D geometry (Apache-2.0). Start with an on-device
 feasibility experiment for TripoSG (convert in CI, measure, test on the S25 Ultra) before
 building UI for all three.
+
+## Print templates — done and next (2026-10-23)
+Done: lithophane (flat and lamp cylinder), relief, QR (link / Wi-Fi / WhatsApp / phone / text,
+optional caption), name keychain (outline / plate / round pet tag, key ring), cookie cutter,
+stamp. All real-size, watertight, sliced in PrusaSlicer.
+Next ideas, in order of value/effort:
+- Laser / vinyl cutter export (SVG, DXF) of the 2D masks: QR, names, stencils, cookie outlines
+  for Cricut and laser cutters — same masks, a second market.
+- Stencil with automatic bridges (letters like ם, O, A keep their inner islands).
+- Photo medallion / coin: relief inside a circle with a key ring.
+- Braille labels (Hebrew + English), ADA dot sizes. Needs a verified Hebrew Braille table.
+- Two-colour "pause at height" note in the 3MF (PrusaSlicer/Bambu custom G-code) so the colour
+  change is automatic.
+- Map / terrain tiles from elevation data (needs an open DEM source, e.g. Copernicus 30 m).
+- Phone stand and cable organiser with a name, from parametric shapes.
+
+## Model research (2026-10-23)
+- TRELLIS.2 (Microsoft, MIT, 4B, textured PBR output) — best open quality, but 24 GB GPU class;
+  too big for the phone today, candidate for a later "quality" pack once TripoSG is proven.
+- Pixal3D (Tencent ARC, MIT) — pixel-aligned image-to-3D; check its NOTICE file (third-party
+  parts) and DINOv3 dependency (gated licence) before use.
+- InstantMesh (Apache-2.0 code) — depends on Zero123++/Stable Diffusion weights with their own
+  licences; not clean.
+- UniTEX, EmbodiedGen texture (Apache-2.0) — texture generation for an existing mesh: the
+  missing piece for TripoSG (geometry only). Evaluate size on device.
+- Text-to-3D: no small clean model found; FLUX.2 klein 4B (Apache-2.0) text-to-image + TripoSG
+  remains the plan.
