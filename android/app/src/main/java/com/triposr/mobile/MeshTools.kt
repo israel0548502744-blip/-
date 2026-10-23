@@ -222,6 +222,8 @@ object MeshTools {
         }
         val texFile = File(file.parentFile, "texture.bin")
         if (uvs != null) mesh.texture!!.save(texFile) else texFile.delete()
+        val sizeFile = File(file.parentFile, "size_mm.txt")
+        mesh.sizeMm?.let { sizeFile.writeText(it.toString()) } ?: sizeFile.delete()
         buf.rewind()
         FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE,
             StandardOpenOption.TRUNCATE_EXISTING).use { it.write(buf) }
@@ -245,6 +247,7 @@ object MeshTools {
             val tex = Texture.load(File(file.parentFile, "texture.bin"))
             if (tex != null) { mesh.uvs = uvs; mesh.texture = tex }
         }
+        mesh.sizeMm = File(file.parentFile, "size_mm.txt").takeIf { it.exists() }?.readText()?.toFloatOrNull()
         return mesh
     }
 }

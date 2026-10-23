@@ -15,6 +15,9 @@ class Mesh(
     var uvs: FloatArray? = null
     var texture: Texture? = null
 
+    /** Real size (longest side, mm) for parts designed to measure, e.g. a keychain; null = scale to the default. */
+    var sizeMm: Float? = null
+
     /** Copies the texture of [from] when the triangles are unchanged (same indices). */
     fun withTextureOf(from: Mesh): Mesh {
         if (indices === from.indices || indices.contentEquals(from.indices)) { uvs = from.uvs; texture = from.texture }

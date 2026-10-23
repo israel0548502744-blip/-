@@ -328,7 +328,7 @@ internal fun PrintSection(print: PrintModel?, showThin: Boolean, busy: Boolean, 
         val r = print.report
         fun mm(x: Float) = "%.0f".format(x)
         PrintRow(true, "גודל: ${mm(r.sizeMm[0])} × ${mm(r.sizeMm[1])} × ${mm(r.sizeMm[2])} מ״מ",
-            "הצלע הארוכה ${mm(Printability.TARGET_MM)} מ״מ · נפח %.1f סמ״ק".format(r.volumeCm3))
+            "הצלע הארוכה ${mm(r.sizeMm.max())} מ״מ · נפח %.1f סמ״ק".format(r.volumeCm3))
         PrintRow(r.watertight, if (r.watertight) "אטום ותקין להדפסה" else "המודל לא אטום לגמרי",
             listOfNotNull(
                 r.nonManifoldBefore.takeIf { it > 0 }?.let { "תוקנו $it צלעות לא תקינות" },

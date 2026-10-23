@@ -1,6 +1,11 @@
 package com.triposr.mobile.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.SolidColor
+import com.triposr.mobile.Templates
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -72,40 +77,88 @@ fun ExtraScreen() {
     val ctx = LocalContext.current
     var kind by remember { mutableStateOf(Creations.Kind.LITHOPHANE) }
     var image by remember { mutableStateOf<Bitmap?>(null) }
-    var text by remember { mutableStateOf("https://") }
+    var text by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    var caption by remember { mutableStateOf("") }
+    var qrType by remember { mutableStateOf(Templates.QrType.LINK) }
     var frame by remember { mutableStateOf(true) }
     var invert by remember { mutableStateOf(false) }
     var maxMm by remember { mutableFloatStateOf(3f) }
     var reliefMm by remember { mutableFloatStateOf(8f) }
     var flatBg by remember { mutableStateOf(true) }
+    var letterMm by remember { mutableFloatStateOf(12f) }
+    var cookieMm by remember { mutableFloatStateOf(80f) }
+    var stampMm by remember { mutableFloatStateOf(50f) }
+    var keyring by remember { mutableStateOf(true) }
+    var outline by remember { mutableStateOf(true) }
+    var stampImage by remember { mutableStateOf(false) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) image = Actions.loadBitmap(ctx, uri) ?: run { Actions.toast(ctx, "לא הצלחתי לפתוח את התמונה"); null }
     }
     val busy = Creations.busy
+    val usesImage = kind.needsImage || (kind == Creations.Kind.STAMP && stampImage)
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text,
+        focusedBorderColor = C.Violet, unfocusedBorderColor = C.Faint, focusedLabelColor = C.Violet, unfocusedLabelColor = C.Sub)
+
+    @Composable
+    fun Field(value: String, label: String, onChange: (String) -> Unit, type: KeyboardType = KeyboardType.Text) =
+        OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text(label) },
+            keyboardOptions = KeyboardOptions(keyboardType = type), colors = fieldColors)
 
     Column(Modifier.fillMaxSize()) {
         TopBar("יצירות להדפסה", onBack = { AppState.back() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Segmented(Creations.Kind.entries.toList(), kind, { it.label }, { kind = it })
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (k in Creations.Kind.entries) {
+                    val on = k == kind
+                    Text(k.label, color = if (on) Color.White else C.Sub, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clip(CircleShape).background(if (on) C.Primary else SolidColor(Color(0x14FFFFFF)))
+                            .clickable { kind = k }.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
             Text(when (kind) {
                 Creations.Kind.LITHOPHANE -> "לוח דק שהתמונה מופיעה בו כשמאירים מאחור. מודפס בלבן, הכי פשוט ותמיד מצליח."
                 Creations.Kind.RELIEF -> "התמונה בולטת מהלוח לפי העומק שלה, עם הצבעים שלה."
-                Creations.Kind.QR -> "לוח עם קוד QR בולט שנסרק בטלפון. החלף פילמנט בגובה 2 מ״מ לשני צבעים."
+                Creations.Kind.QR -> "לוח עם קוד QR בולט שנסרק בטלפון: קישור, רשת Wi‑Fi, וואטסאפ או טלפון. החלף פילמנט בגובה 2 מ״מ לשני צבעים."
+                Creations.Kind.NAME -> "שם או מילה בולטים על בסיס, עם חור לטבעת. החלף פילמנט בגובה 2.4 מ״מ כדי שהאותיות יצאו בצבע אחר."
+                Creations.Kind.COOKIE -> "חותכן עוגיות בצורה של הציור או האובייקט בתמונה. מומלץ ציור פשוט עם קו מתאר ברור."
+                Creations.Kind.STAMP -> "חותמת לעוגיות, בצק, חימר או שעווה. ההדפסה הפוכה (מראה), כך שהחותם יוצא נכון."
             }, color = C.Sub, fontSize = 13.sp)
 
-            if (kind == Creations.Kind.QR) {
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("קישור או טקסט") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text,
-                        focusedBorderColor = C.Violet, unfocusedBorderColor = C.Faint, focusedLabelColor = C.Violet, unfocusedLabelColor = C.Sub))
-                val qr = remember(text) { runCatching { if (text.isBlank()) null else Creations.qrBitmap(text.trim(), 6) }.getOrNull() }
-                Box(Modifier.fillMaxWidth().height(240.dp).glass(RoundedCornerShape(26.dp)), contentAlignment = Alignment.Center) {
-                    if (qr != null) Image(qr.asImageBitmap(), null, Modifier.size(200.dp).clip(RoundedCornerShape(10.dp)))
-                    else Text("הכנס קישור", color = C.Sub)
+            when (kind) {
+                Creations.Kind.QR -> {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (t in Templates.QrType.entries) Box(Modifier.clip(CircleShape).clickable { qrType = t; text = ""; second = "" }) {
+                            Chip(t.label, if (t == qrType) C.Violet else C.Sub)
+                        }
+                    }
+                    when (qrType) {
+                        Templates.QrType.LINK -> Field(text, "קישור", { text = it }, KeyboardType.Uri)
+                        Templates.QrType.WIFI -> { Field(text, "שם הרשת", { text = it }); Field(second, "סיסמה (ריק לרשת פתוחה)", { second = it }, KeyboardType.Password) }
+                        Templates.QrType.WHATSAPP -> { Field(text, "מספר טלפון", { text = it }, KeyboardType.Phone); Field(second, "הודעה מוכנה (לא חובה)", { second = it }) }
+                        Templates.QrType.PHONE -> Field(text, "מספר טלפון", { text = it }, KeyboardType.Phone)
+                        Templates.QrType.TEXT -> Field(text, "טקסט", { text = it })
+                    }
+                    Field(caption, "כיתוב מתחת לקוד (לא חובה)", { caption = it })
+                    val payload = Templates.qrPayload(qrType, text, second)
+                    val qr = remember(payload) { runCatching { if (text.isBlank()) null else Creations.qrBitmap(payload, 6) }.getOrNull() }
+                    Box(Modifier.fillMaxWidth().height(240.dp).glass(RoundedCornerShape(26.dp)), contentAlignment = Alignment.Center) {
+                        if (qr != null) Image(qr.asImageBitmap(), null, Modifier.size(200.dp).clip(RoundedCornerShape(10.dp)))
+                        else Text("מלא את הפרטים", color = C.Sub)
+                    }
+                    if (qrType == Templates.QrType.WIFI) Text("הסיסמה נשמרת בתוך הקוד המודפס: כל מי שסורק אותו יכול לראות אותה.",
+                        color = C.Amber, fontSize = 12.sp)
                 }
-            } else {
+                Creations.Kind.NAME -> Field(text, "שם או טקסט", { text = it })
+                Creations.Kind.STAMP -> {
+                    ToggleRow("מתמונה", "ציור כהה על רקע לבן במקום טקסט", stampImage) { stampImage = it }
+                    if (!stampImage) Field(text, "טקסט לחותמת", { text = it })
+                }
+                else -> {}
+            }
+
+            if (usesImage) {
                 Box(Modifier.fillMaxWidth().height(260.dp).glass(RoundedCornerShape(26.dp))
                     .pressable { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     contentAlignment = Alignment.Center) {
@@ -135,9 +188,26 @@ fun ExtraScreen() {
                         Slider(reliefMm, { reliefMm = it.toInt().toFloat() }, valueRange = 3f..15f, colors = sliderColors())
                     }
                 }
+                Creations.Kind.NAME -> Section(title = "אפשרויות") {
+                    ToggleRow("בסיס לפי צורת האותיות", "כבוי: לוח מלבני מעוגל", outline) { outline = it }
+                    ToggleRow("חור לטבעת", "למחזיק מפתחות. כבוי: שלט", keyring) { keyring = it }
+                    Text("גובה אותיות: %.0f מ״מ".format(letterMm), color = C.Text, fontSize = 14.sp)
+                    Slider(letterMm, { letterMm = it.toInt().toFloat() }, valueRange = 8f..30f, colors = sliderColors())
+                }
+                Creations.Kind.COOKIE -> Section(title = "אפשרויות") {
+                    ToggleRow("הסרת רקע", "לתמונה של אובייקט. כבוי: הצורה היא הקווים הכהים בציור", flatBg) { flatBg = it }
+                    Text("גודל: %.0f מ״מ".format(cookieMm), color = C.Text, fontSize = 14.sp)
+                    Slider(cookieMm, { cookieMm = (it / 5).toInt() * 5f }, valueRange = 40f..140f, colors = sliderColors())
+                    Text("להב 0.9 מ״מ בגובה 14 מ״מ, עם שפה רחבה למטה לאחיזה.", color = C.Sub, fontSize = 12.sp)
+                }
+                Creations.Kind.STAMP -> Section(title = "אפשרויות") {
+                    Text("אורך: %.0f מ״מ".format(stampMm), color = C.Text, fontSize = 14.sp)
+                    Slider(stampMm, { stampMm = (it / 5).toInt() * 5f }, valueRange = 25f..120f, colors = sliderColors())
+                }
                 Creations.Kind.QR -> {}
             }
-            Text("גודל: 100 מ״מ בצלע הארוכה. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה.", color = C.Faint, fontSize = 12.sp)
+            Text(if (kind.needsImage && kind != Creations.Kind.COOKIE || kind == Creations.Kind.QR) "גודל: 100 מ״מ בצלע הארוכה. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה."
+                else "המודל נשמר בגודל האמיתי שבחרת. אחרי היצירה תמצא ייצוא 3MF/STL להדפסה.", color = C.Faint, fontSize = 12.sp)
             Creations.error?.let { Text(it, color = C.Red, fontSize = 13.sp) }
             Spacer(Modifier.height(4.dp))
         }
@@ -149,12 +219,19 @@ fun ExtraScreen() {
                 Text(busy, color = C.Sub, fontSize = 13.sp)
             }
             val ready = when (kind) {
-                Creations.Kind.QR -> text.isNotBlank() && text.trim() != "https://"
+                Creations.Kind.QR, Creations.Kind.NAME -> text.isNotBlank()
                 Creations.Kind.RELIEF -> image != null && Extras.ready(ctx, Extras.DEPTH)
-                Creations.Kind.LITHOPHANE -> image != null
+                Creations.Kind.STAMP -> if (stampImage) image != null else text.isNotBlank()
+                else -> image != null
             }
             GradientButton("צור ${kind.label}", Modifier.fillMaxWidth(), sparkles = true, enabled = ready && busy == null) {
-                Creations.create(kind, image, text, Creations.Options(frame, maxMm, invert, reliefMm, flatBg))
+                val size = when (kind) {
+                    Creations.Kind.NAME -> letterMm
+                    Creations.Kind.COOKIE -> cookieMm
+                    else -> stampMm
+                }
+                Creations.create(kind, image, text, Creations.Options(frame, maxMm, invert, reliefMm, flatBg, size, keyring, outline,
+                    stampImage, qrType, second, caption))
             }
         }
     }

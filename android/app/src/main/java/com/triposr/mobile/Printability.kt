@@ -51,7 +51,7 @@ object Printability {
     /** [prepare] for the default size, remembered for the last mesh (the result screen and exports share it). */
     fun prepared(src: Mesh, cut: Float = baseCutMm): PrintModel {
         cache?.let { (k, pm) -> if (k.mesh === src && k.baseCutMm == cut) return pm }
-        return prepare(src, baseCutMm = cut).also { cache = Key(src, cut) to it }
+        return prepare(src, targetMm = src.sizeMm ?: TARGET_MM, baseCutMm = cut).also { cache = Key(src, cut) to it }
     }
 
     fun prepare(src: Mesh, targetMm: Float = TARGET_MM, baseCutMm: Float = 0f): PrintModel {
@@ -646,7 +646,7 @@ object Printability {
      */
     fun thicknessPreview(pm: PrintModel): Mesh {
         val m = pm.mesh; val p = m.positions; val nv = m.vertexCount
-        val s = 1.6f / Printability.TARGET_MM
+        val s = 1.6f / pm.report.sizeMm.max()
         val out = FloatArray(p.size); val nor = FloatArray(p.size)
         val h = pm.report.sizeMm[2]
         for (v in 0 until nv) {

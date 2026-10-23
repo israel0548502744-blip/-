@@ -48,8 +48,9 @@ object Heightfield {
 
     /**
      * Blocky solid: one flat-topped column per cell, heights taken from [levels] (a small set
-     * of distinct values, e.g. plate and raised modules). Walls are split at every level so
-     * neighbouring faces always share whole edges (no T-junctions), which keeps it watertight.
+     * of distinct values, e.g. plate and raised modules). Cells of height 0 are left empty.
+     * Walls are split at every level so neighbouring faces always share whole edges (no
+     * T-junctions), which keeps it watertight.
      */
     fun columns(cellHeight: FloatArray, w: Int, h: Int, cellMm: Float, cellColor: (Int) -> FloatArray): Mesh {
         val levels = (cellHeight.toList() + 0f).distinct().sorted()
@@ -69,7 +70,9 @@ object Heightfield {
         fun hAt(x: Int, y: Int) = if (x in 0 until w && y in 0 until h) cellHeight[y * w + x] else 0f
         val white = floatArrayOf(0.94f, 0.94f, 0.94f)
         for (y in 0 until h) for (x in 0 until w) {
-            val z = hAt(x, y); val c = cellColor(y * w + x)
+            val z = hAt(x, y)
+            if (z <= 0f) continue  // empty cell: a hole or outside the part
+            val c = cellColor(y * w + x)
             // corners: (x,y) top-left in grid coords; y grows towards the front (down in viewer).
             quad(vid(x, y, z, c), vid(x, y + 1, z, c), vid(x + 1, y + 1, z, c), vid(x + 1, y, z, c))
             quad(vid(x, y, 0f, white), vid(x + 1, y, 0f, white), vid(x + 1, y + 1, 0f, white), vid(x, y + 1, 0f, white))
@@ -109,7 +112,7 @@ object Heightfield {
         return toViewer(pos, col, tri)
     }
 
-    /** Z-up millimetres -> the app's Y-up space, scaled so the longest side is 1.6 units. */
+    /** Z-up millimetres -> the app's Y-up space, scaled so the longest side is 1.6 units; keeps the size in mm. */
     fun toViewer(pos: FloatArray, col: FloatArray, tri: IntArray): Mesh {
         val nv = pos.size / 3
         val lo = FloatArray(3) { Float.MAX_VALUE }; val hi = FloatArray(3) { -Float.MAX_VALUE }
@@ -121,7 +124,9 @@ object Heightfield {
             val x = pos[v * 3] - cx; val y = pos[v * 3 + 1] - cy; val z = pos[v * 3 + 2] - cz
             out[v * 3] = x * s; out[v * 3 + 1] = z * s; out[v * 3 + 2] = -y * s
         }
-        return Mesh(out, MeshTools.normals(out, tri), col, tri)
+        return Mesh(out, MeshTools.normals(out, tri), col, tri).also {
+            it.sizeMm = max(hi[0] - lo[0], max(hi[1] - lo[1], hi[2] - lo[2]))
+        }
     }
 
     // ------------------------------------------------------------------ products

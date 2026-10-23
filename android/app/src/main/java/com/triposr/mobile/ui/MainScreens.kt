@@ -219,7 +219,7 @@ fun HomeScreen() {
                 PreviewPanel(last?.let { rememberThumb(it) }, if (last != null) 1f else 0f, last?.name ?: "התחל")
             }
         }
-        FeatureCard(Icons.Rounded.Layers, "ליתופן, תבליט ו-QR", "מתמונה או מקישור",
+        FeatureCard(Icons.Rounded.Layers, "יצירות להדפסה", "מחזיק מפתחות, חותכן עוגיות, QR, ליתופן ועוד",
             Modifier.enter(i++), onClick = { AppState.navigate(Screen.Extra) }) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconTile(Icons.Rounded.Lightbulb, 40.dp, C.Primary)

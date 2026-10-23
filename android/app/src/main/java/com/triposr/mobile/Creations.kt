@@ -15,12 +15,16 @@ import kotlinx.coroutines.withContext
 
 /**
  * Print products that don't need the 3D model: lithophane (light shines through a photo),
- * relief (photo raised by its depth, needs the depth extra) and QR code plates.
- * All are made with [Heightfield] at 100 mm on the longest side, the size the print export uses,
- * so thicknesses stay exactly as chosen.
+ * relief (photo raised by its depth, needs the depth extra), QR code plates (link, Wi-Fi,
+ * WhatsApp...), name keychains, cookie cutters and stamps.
+ * Photo products are 100 mm on the longest side; templates keep the size the user picked
+ * (Mesh.sizeMm), and the print export uses that size, so thicknesses stay exactly as designed.
  */
 object Creations {
-    enum class Kind(val label: String) { LITHOPHANE("ליתופן"), RELIEF("תבליט"), QR("קוד QR") }
+    enum class Kind(val label: String, val needsImage: Boolean) {
+        LITHOPHANE("ליתופן", true), RELIEF("תבליט", true), QR("קוד QR", false),
+        NAME("מחזיק מפתחות", false), COOKIE("חותכן עוגיות", true), STAMP("חותמת", false),
+    }
 
     class Options(
         val frame: Boolean = true,
@@ -28,6 +32,15 @@ object Creations {
         val invert: Boolean = false,
         val reliefMm: Float = 8f,
         val flatBackground: Boolean = true,
+        /** Name tag: letter height; cookie cutter / stamp: longest side. */
+        val sizeMm: Float = 12f,
+        val keyring: Boolean = true,
+        val outline: Boolean = true,
+        /** Stamp: use the image (dark parts) instead of the text. */
+        val stampImage: Boolean = false,
+        val qrType: Templates.QrType = Templates.QrType.LINK,
+        val qrSecond: String = "",
+        val caption: String = "",
     )
 
     /** Status line while something is being built, null when idle. */
@@ -47,7 +60,10 @@ object Creations {
                 val (mesh, thumb) = when (kind) {
                     Kind.LITHOPHANE -> lithophane(image!!, o)
                     Kind.RELIEF -> relief(image!!, o)
-                    Kind.QR -> qr(text)
+                    Kind.QR -> qr(Templates.qrPayload(o.qrType, text, o.qrSecond), o.caption)
+                    Kind.NAME -> nameTag(text, o)
+                    Kind.COOKIE -> cookie(image!!, o)
+                    Kind.STAMP -> stamp(image, text, o)
                 }
                 val seconds = (System.nanoTime() - t0) / 1e9
                 val p = AppState.saveProject(mesh, thumb, "—", kind.label, seconds, emptyMap(),
@@ -108,10 +124,82 @@ object Creations {
         return Bitmap.createBitmap(pixels, n * px, n * px, Bitmap.Config.ARGB_8888)
     }
 
-    private fun qr(text: String): Pair<Mesh, Bitmap> {
+    private fun qr(text: String, caption: String): Pair<Mesh, Bitmap> {
         if (text.isBlank()) throw IllegalStateException("צריך להכניס קישור או טקסט")
         val (mod, n) = qrMatrix(text.trim())
-        return Heightfield.qr(mod, n, moduleMm = SIZE_MM / n) to qrBitmap(text.trim())
+        val mesh = if (caption.isBlank()) Heightfield.qr(mod, n, moduleMm = SIZE_MM / n)
+        else {
+            val k = 6
+            Templates.qrWithCaption(mod, n, textMask(caption.trim(), 7 * k), SIZE_MM / n, k)
+        }
+        return mesh to qrBitmap(text.trim())
+    }
+
+    // ------------------------------------------------------------------ text and shape templates
+
+    private const val TEXT_CELL_MM = 0.25f
+
+    /**
+     * Text rendered as a mask, [heightCells] cells per line height. StaticLayout runs the bidi
+     * algorithm, so Hebrew, English and numbers mix correctly.
+     */
+    fun textMask(text: String, heightCells: Int): Templates.Mask {
+        val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            textSize = heightCells.toFloat()
+            color = Color.BLACK
+        }
+        val width = kotlin.math.ceil(android.text.Layout.getDesiredWidth(text, paint)).toInt() + 4
+        val layout = android.text.StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER).setIncludePad(false).build()
+        val w = width; val h = layout.height + 4
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(bmp).apply { translate(0f, 2f); layout.draw(this) }
+        val px = IntArray(w * h).also { bmp.getPixels(it, 0, w, 0, 0, w, h) }
+        return Templates.Mask(w, h, BooleanArray(w * h) { Color.alpha(px[it]) > 127 })
+    }
+
+    private fun preview(mask: Templates.Mask): Bitmap {
+        val m = mask.cropped()
+        val px = IntArray(m.w * m.h) { if (m.cells[it]) Color.rgb(40, 40, 48) else Color.rgb(236, 236, 240) }
+        return Bitmap.createBitmap(px, m.w, m.h, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun nameTag(text: String, o: Options): Pair<Mesh, Bitmap> {
+        if (text.isBlank()) throw IllegalStateException("צריך להכניס שם או טקסט")
+        // Font size ~1.4x the height of capital letters.
+        val mask = textMask(text.trim(), (o.sizeMm * 1.4f / TEXT_CELL_MM).toInt())
+        val mesh = Templates.nameTag(mask, TEXT_CELL_MM, if (o.outline) Templates.TagStyle.OUTLINE else Templates.TagStyle.PLATE, o.keyring)
+        return mesh to preview(mask)
+    }
+
+    /** Silhouette of the image: the background-removal mask, or dark lines for a drawing on white. */
+    private fun shape(src: Bitmap, samples: Int, removeBackground: Boolean): Templates.Mask {
+        val img = if (removeBackground) Enhance.removeBackground(AppState.app, src) { AppState.segmenter() } else src
+        val s = samples.toFloat() / maxOf(img.width, img.height)
+        val w = (img.width * s).toInt().coerceAtLeast(8); val h = (img.height * s).toInt().coerceAtLeast(8)
+        val b = Bitmap.createScaledBitmap(img, w, h, true)
+        val px = IntArray(w * h).also { b.getPixels(it, 0, w, 0, 0, w, h) }
+        return Templates.Mask(w, h, BooleanArray(w * h) {
+            if (removeBackground) Color.alpha(px[it]) > 127 else Heightfield.luminance(intArrayOf(px[it]))[0] < 0.5f
+        })
+    }
+
+    private fun cookie(src: Bitmap, o: Options): Pair<Mesh, Bitmap> {
+        val samples = 320
+        val m = shape(src, samples, removeBackground = o.flatBackground)
+        if (m.count() < 50) throw IllegalStateException("לא נמצאה צורה בתמונה")
+        val b = m.bounds()!!
+        val cell = o.sizeMm / maxOf(b[2] - b[0] + 1, b[3] - b[1] + 1)
+        return Templates.cookieCutter(m, cell) to preview(m)
+    }
+
+    private fun stamp(src: Bitmap?, text: String, o: Options): Pair<Mesh, Bitmap> {
+        val m = if (o.stampImage) shape(src ?: throw IllegalStateException("צריך לבחור תמונה"), 300, removeBackground = false)
+        else textMask(text.trim().ifEmpty { throw IllegalStateException("צריך להכניס טקסט") }, 120)
+        val b = m.bounds() ?: throw IllegalStateException("לא נמצא ציור")
+        val cell = o.sizeMm / maxOf(b[2] - b[0] + 1, b[3] - b[1] + 1)
+        return Templates.stamp(m, cell) to preview(m)
     }
 
     private fun grey(src: Bitmap): Bitmap {
