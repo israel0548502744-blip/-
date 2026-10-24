@@ -32,7 +32,12 @@ import androidx.compose.ui.platform.LocalContext
 import com.triposr.mobile.ui.Actions
 import com.triposr.mobile.ui.BottomNav
 import com.triposr.mobile.ui.C
+import com.triposr.mobile.ui.CreateMenu
 import com.triposr.mobile.ui.CreateScreen
+import com.triposr.mobile.ui.LegalScreen
+import com.triposr.mobile.ui.ModelsScreen
+import com.triposr.mobile.ui.TermsDialog
+import com.triposr.mobile.ui.isRoot
 import com.triposr.mobile.ui.DiagnosticsScreen
 import com.triposr.mobile.ui.HomeScreen
 import com.triposr.mobile.ui.ProcessingScreen
@@ -92,7 +97,10 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             AppState.update = runCatching { withContext(Dispatchers.IO) { Updater.check() } }
-                .onFailure { CrashLog.log("Update check failed: ${it.message}") }.getOrNull()
+                .onFailure {
+                    CrashLog.log("Update check failed: ${it.message}")
+                    Health.report("בדיקת עדכונים", "לא הצלחתי לבדוק עדכונים: ${it.message}", Health.Level.WARNING)
+                }.getOrNull()
         }
         LaunchedEffect(pendingPick) {
             if (pendingPick) {
@@ -102,7 +110,9 @@ class MainActivity : ComponentActivity() {
         }
 
         val screen = AppState.screen
-        BackHandler(enabled = AppState.backStack.size > 1) { AppState.back() }
+        BackHandler(enabled = AppState.createMenu) { AppState.createMenu = false }
+        BackHandler(enabled = !AppState.createMenu && AppState.backStack.size > 1) { AppState.back() }
+        var termsOk by remember { mutableStateOf(Settings.termsAccepted(ctx)) }
 
         Box(Modifier.fillMaxSize().background(C.Bg)) {
             SpaceBackground()
@@ -128,10 +138,14 @@ class MainActivity : ComponentActivity() {
                         Screen.Settings -> SettingsScreen()
                         Screen.Diagnostics -> DiagnosticsScreen()
                         Screen.Extra -> com.triposr.mobile.ui.ExtraScreen()
+                        Screen.Models -> ModelsScreen()
+                        Screen.Legal -> LegalScreen()
                     }
                 }
-                if (screen in listOf(Screen.Home, Screen.Projects, Screen.Settings, Screen.Diagnostics)) BottomNav(screen)
+                if (screen.isRoot) BottomNav(screen)
             }
+            CreateMenu()
+            if (!termsOk && screen != Screen.Legal) TermsDialog { Settings.acceptTerms(ctx); termsOk = true }
         }
     }
 }

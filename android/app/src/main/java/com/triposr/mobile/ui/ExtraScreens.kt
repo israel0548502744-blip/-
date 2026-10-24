@@ -75,7 +75,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ExtraScreen() {
     val ctx = LocalContext.current
-    var kind by remember { mutableStateOf(Creations.Kind.LITHOPHANE) }
+    var kind by remember { mutableStateOf(AppState.extraKind) }
     var image by remember { mutableStateOf<Bitmap?>(null) }
     var text by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
@@ -108,17 +108,10 @@ fun ExtraScreen() {
             keyboardOptions = KeyboardOptions(keyboardType = type), colors = fieldColors)
 
     Column(Modifier.fillMaxSize()) {
-        TopBar("יצירות להדפסה", onBack = { AppState.back() })
+        TopBar(kind.label, onBack = { AppState.back() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (k in Creations.Kind.entries) {
-                    val on = k == kind
-                    Text(k.label, color = if (on) Color.White else C.Sub, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clip(CircleShape).background(if (on) C.Primary else SolidColor(Color(0x14FFFFFF)))
-                            .clickable { kind = k }.padding(horizontal = 14.dp, vertical = 8.dp))
-                }
-            }
+            ChoiceChips(Creations.Kind.entries.toList(), kind, { it.label }, { kind = it; AppState.extraKind = it }, icon = { it.icon() })
             Text(when (kind) {
                 Creations.Kind.LITHOPHANE -> "לוח דק (או מנורה גלילית) שהתמונה מופיעה בו כשמאירים מאחור. מודפס בלבן, הכי פשוט ותמיד מצליח."
                 Creations.Kind.RELIEF -> "התמונה בולטת מהלוח לפי העומק שלה, עם הצבעים שלה."
@@ -130,11 +123,7 @@ fun ExtraScreen() {
 
             when (kind) {
                 Creations.Kind.QR -> {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (t in Templates.QrType.entries) Box(Modifier.clip(CircleShape).clickable { qrType = t; text = ""; second = "" }) {
-                            Chip(t.label, if (t == qrType) C.Violet else C.Sub)
-                        }
-                    }
+                    ChoiceChips(Templates.QrType.entries.toList(), qrType, { it.label }, { qrType = it; text = ""; second = "" })
                     when (qrType) {
                         Templates.QrType.LINK -> Field(text, "קישור", { text = it }, KeyboardType.Uri)
                         Templates.QrType.WIFI -> { Field(text, "שם הרשת", { text = it }); Field(second, "סיסמה (ריק לרשת פתוחה)", { second = it }, KeyboardType.Password) }
@@ -196,9 +185,11 @@ fun ExtraScreen() {
                     }
                 }
                 Creations.Kind.NAME -> Section(title = "אפשרויות") {
-                    Segmented(Templates.TagStyle.entries.toList(), tagStyle, {
+                    ChoiceCards(Templates.TagStyle.entries.toList(), tagStyle, {
                         when (it) { Templates.TagStyle.OUTLINE -> "לפי האותיות"; Templates.TagStyle.PLATE -> "מלבן"; Templates.TagStyle.ROUND -> "עגול" }
-                    }, { tagStyle = it })
+                    }, { tagStyle = it }, columns = 3, subtitle = {
+                        when (it) { Templates.TagStyle.OUTLINE -> "קו מתאר סביב"; Templates.TagStyle.PLATE -> "לוחית קלאסית"; Templates.TagStyle.ROUND -> "קצוות מעוגלים" }
+                    })
                     ToggleRow("חור לטבעת", "למחזיק מפתחות. כבוי: שלט", keyring) { keyring = it }
                     Text("גובה אותיות: %.0f מ״מ".format(letterMm), color = C.Text, fontSize = 14.sp)
                     Slider(letterMm, { letterMm = it.toInt().toFloat() }, valueRange = 8f..30f, colors = sliderColors())

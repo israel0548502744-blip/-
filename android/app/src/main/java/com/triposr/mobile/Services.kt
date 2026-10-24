@@ -81,6 +81,11 @@ object Settings {
     const val DEFAULT_SMOOTH = 3
 
     /** Bake a texture (sharp colors) instead of only per-vertex colors. On by default. */
+    /** Version of the terms the user accepted (0 = never). Bump TERMS_VERSION when they change. */
+    const val TERMS_VERSION = 1
+    fun termsAccepted(ctx: Context) = prefs(ctx).getInt("terms_version", 0) >= TERMS_VERSION
+    fun acceptTerms(ctx: Context) = prefs(ctx).edit().putInt("terms_version", TERMS_VERSION).apply()
+
     fun bakeTexture(ctx: Context) = prefs(ctx).getBoolean("bake_texture", true)
     fun setBakeTexture(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("bake_texture", v).apply()
 

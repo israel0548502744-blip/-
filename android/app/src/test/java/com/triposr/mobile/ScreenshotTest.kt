@@ -170,7 +170,23 @@ class ScreenshotTest {
 
     @Test fun settings() = shot("08_settings", Screen.Settings) { SettingsScreen() }
 
-    @Test fun diagnostics() = shot("09_diagnostics", Screen.Diagnostics) { DiagnosticsScreen() }
+    @Test fun diagnostics() {
+        Health.clear()
+        Health.report("ספריות מערכת", "חסרות: libQnnHtp.so")
+        Health.report("אחסון", "נשארו 1500 MB פנויים. הורדת מודלים נוספים דורשת יותר", Health.Level.WARNING)
+        shot("09_diagnostics") { DiagnosticsScreen() }
+        Health.clear()
+    }
+
+    @Test fun models() = shot("14_models", Screen.Models) { com.triposr.mobile.ui.ModelsScreen() }
+
+    @Test fun createMenu() {
+        AppState.createMenu = true
+        shot("15_create_menu", Screen.Home) { Box(Modifier.fillMaxSize()) { HomeScreen(); com.triposr.mobile.ui.CreateMenu() } }
+        AppState.createMenu = false
+    }
+
+    @Test fun legal() = shot("16_legal") { com.triposr.mobile.ui.LegalScreen() }
 
     @Test fun homeModelMissing() {
         ctx.getSharedPreferences("models", Context.MODE_PRIVATE).edit().clear().commit()

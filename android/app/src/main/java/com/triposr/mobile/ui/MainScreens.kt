@@ -32,6 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -135,15 +138,16 @@ fun BottomNav(current: Screen) {
             NavItem(Icons.Rounded.Home, "בית", current == Screen.Home) { AppState.navigateRoot(Screen.Home) }
             NavItem(Icons.Rounded.GridView, "גלריה", current == Screen.Projects) { AppState.navigateRoot(Screen.Projects) }
             Spacer(Modifier.width(72.dp))
-            NavItem(Icons.Rounded.Settings, "הגדרות", current == Screen.Settings) { AppState.navigateRoot(Screen.Settings) }
-            NavItem(Icons.Rounded.BugReport, "דוחות", current == Screen.Diagnostics) { AppState.navigateRoot(Screen.Diagnostics) }
+            NavItem(Icons.Rounded.Memory, "מודלים", current == Screen.Models) { AppState.navigateRoot(Screen.Models) }
+            val errors = remember(com.triposr.mobile.Health.tick.intValue) { com.triposr.mobile.Health.errorCount() }
+            NavItem(Icons.Rounded.Settings, "הגדרות", current == Screen.Settings, dot = errors > 0) { AppState.navigateRoot(Screen.Settings) }
         }
         Column(Modifier.align(Alignment.TopCenter).offset(y = (-14).dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(66.dp).shadow(20.dp, CircleShape, ambientColor = C.Magenta, spotColor = C.Magenta)
                     .clip(CircleShape).background(Brush.linearGradient(listOf(C.Purple, C.Magenta, C.Pink)))
                     .border(1.5.dp, Color(0x55FFFFFF), CircleShape)
-                    .pressable { AppState.startNew() },
+                    .pressable { AppState.createMenu = !AppState.createMenu },
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.Add, "צור", tint = Color.White, modifier = Modifier.size(32.dp)) }
         }
@@ -151,12 +155,15 @@ fun BottomNav(current: Screen) {
 }
 
 @Composable
-private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(icon: ImageVector, label: String, selected: Boolean, dot: Boolean = false, onClick: () -> Unit) {
     Column(
         Modifier.clip(RoundedCornerShape(16.dp)).pressable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, tint = if (selected) C.Violet else C.Faint, modifier = Modifier.size(24.dp))
+        Box {
+            Icon(icon, label, tint = if (selected) C.Violet else C.Faint, modifier = Modifier.size(24.dp))
+            if (dot) Box(Modifier.align(Alignment.TopEnd).size(8.dp).clip(CircleShape).background(C.Red))
+        }
         Text(label, color = if (selected) C.Text else C.Faint, fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
         Box(Modifier.padding(top = 3.dp).size(width = 14.dp, height = 3.dp).clip(CircleShape)
@@ -220,7 +227,7 @@ fun HomeScreen() {
             }
         }
         FeatureCard(Icons.Rounded.Layers, "יצירות להדפסה", "מחזיק מפתחות, חותכן עוגיות, QR, ליתופן ועוד",
-            Modifier.enter(i++), onClick = { AppState.navigate(Screen.Extra) }) {
+            Modifier.enter(i++), onClick = { AppState.createMenu = true }) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconTile(Icons.Rounded.Lightbulb, 40.dp, C.Primary)
                 IconTile(Icons.Rounded.Terrain, 40.dp, C.Accent)
@@ -231,8 +238,8 @@ fun HomeScreen() {
             Modifier.enter(i++), onClick = { AppState.navigateRoot(Screen.Projects) }) {
             ThumbStack(AppState.projects.take(3))
         }
-        FeatureCard(Icons.Rounded.Memory, "מעבד הטלפון", processorSummary(ctx),
-            Modifier.enter(i++), onClick = { AppState.navigateRoot(Screen.Settings) }) {
+        FeatureCard(Icons.Rounded.Memory, "מודלים ומעבדים", processorSummary(ctx),
+            Modifier.enter(i++), onClick = { AppState.navigateRoot(Screen.Models) }) {
             ProcessorPanel()
         }
 
@@ -587,7 +594,7 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
             }
 
             if (generators.size > 1) Section(Modifier.enter(2), title = "מודל") {
-                Segmented(generators, generator, { it.label }, { generator = it; Settings.setGenerator(ctx, it) })
+                GeneratorCards(generators, generator) { generator = it; Settings.setGenerator(ctx, it) }
                 Text(generator.hint, color = C.Sub, fontSize = 12.sp)
             }
             if (generator == Generator.TRIPOSR) {
@@ -595,7 +602,7 @@ fun CreateScreen(onGallery: () -> Unit, onCamera: () -> Unit, onFiles: () -> Uni
                     BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
                 }
                 Section(Modifier.enter(3), title = "רמת פירוט") {
-                    Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
+                    QualityCards(quality) { quality = it; Settings.setQuality(ctx, it) }
                     Text("${quality.resolution}³ · ${quality.hint}", color = C.Sub, fontSize = 12.sp)
                 }
             }
@@ -798,23 +805,16 @@ fun BackendPicker(choice: Backend?, onChoice: (Backend?) -> Unit) {
     val ctx = LocalContext.current
     val results = remember(ProbeUi.tick, ProbeUi.running) { Capabilities.results(ctx) }
     val options = listOf<Backend?>(null) + Backend.entries
-    Segmented(options, choice, { it?.short ?: "אוטומטי" }, onChoice,
+    ChoiceCards(options, choice, { it?.short ?: "אוטומטי" }, onChoice, columns = 4,
+        subtitle = { b -> if (b == null) "המהיר" else results[b]?.support?.label ?: "לא נבדק" },
+        icon = { b -> when (b) { null -> Icons.Rounded.AutoAwesome; Backend.NPU -> Icons.Rounded.Bolt
+            Backend.GPU -> Icons.Rounded.ViewInAr; Backend.CPU -> Icons.Rounded.Memory } },
         disabled = { it != null && results[it]?.support in listOf(Support.UNSUPPORTED, Support.FAILED, Support.CRASHED) })
     if (choice == null) {
         Text(if (Capabilities.probed(ctx)) "ייבחר אוטומטית: ${Capabilities.best(ctx).label}, המהיר שעבד בבדיקה"
             else "בפעם הראשונה האפליקציה תבדוק אילו מעבדים עובדים ותבחר את המהיר", color = C.Sub, fontSize = 12.sp)
     }
     if (ProbeUi.running) Text(ProbeUi.status.ifEmpty { "בודק את המעבדים…" }, color = C.Violet, fontSize = 12.sp)
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-        for (b in Backend.entries) {
-            val r = results[b] ?: continue
-            Chip("${b.short} · ${r.support.label}", when (r.support) {
-                Support.OK -> C.Green
-                Support.UNKNOWN -> C.Sub
-                else -> C.Amber
-            })
-        }
-    }
     if (choice != null && results[choice]?.support != Support.OK && results[choice]?.support != Support.UNKNOWN) {
         Text("${choice.short} לא עובד בטלפון הזה, היצירה עלולה להיכשל. מומלץ אוטומטי.", color = C.Amber, fontSize = 12.sp)
     }
@@ -873,6 +873,15 @@ fun NpuPackCard(status: ModelStore.Status) {
             }
         }
     }
+}
+
+/** Detail level as cards with a speed hint. */
+@Composable
+fun QualityCards(selected: Quality, onSelect: (Quality) -> Unit) {
+    ChoiceCards(Quality.entries.toList(), selected, { it.label }, onSelect, columns = 4,
+        subtitle = { "${it.resolution}³" },
+        icon = { when (it) { Quality.LOW -> Icons.Rounded.Bolt; Quality.MEDIUM -> Icons.Rounded.Tune
+            Quality.HIGH -> Icons.Rounded.AutoAwesome; Quality.MAX -> Icons.Rounded.Star } })
 }
 
 /** Seconds since [start], ticking every second. */

@@ -33,6 +33,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -418,3 +422,123 @@ fun GlowBar(progress: Float, modifier: Modifier = Modifier, brush: Brush = C.Acc
         Box(Modifier.fillMaxWidth(p).height(6.dp).clip(CircleShape).background(brush))
     }
 }
+
+/**
+ * Picker made of glass cards: each option has an optional icon, a title and a short line under
+ * it; the chosen one gets a gradient outline and a check badge. Used for choices that need a word
+ * of explanation (model, detail level, processor) instead of a cramped segmented bar.
+ */
+@Composable
+fun <T> ChoiceCards(
+    options: List<T>,
+    selected: T,
+    title: (T) -> String,
+    onSelect: (T) -> Unit,
+    subtitle: (T) -> String? = { null },
+    icon: (T) -> ImageVector? = { null },
+    badge: (T) -> String? = { null },
+    disabled: (T) -> Boolean = { false },
+    columns: Int = options.size.coerceAtMost(2),
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in options.chunked(columns)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                for (o in row) ChoiceCard(o == selected, title(o), subtitle(o), icon(o), badge(o), disabled(o),
+                    compact = columns > 2, modifier = Modifier.weight(1f)) { onSelect(o) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChoiceCard(
+    selected: Boolean, title: String, subtitle: String?, icon: ImageVector?, badge: String?, disabled: Boolean,
+    compact: Boolean, modifier: Modifier, onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val glow by animateFloatAsState(if (selected) 1f else 0f, tween(220), label = "choice")
+    Box(
+        modifier
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(
+                Color(0x1FFFFFFF).copy(alpha = 0.10f + 0.10f * glow), Color(0x08FFFFFF))))
+            .border(if (selected) 1.6.dp else 1.dp,
+                if (selected) Brush.linearGradient(listOf(C.Violet, C.Magenta, C.Orange)) else C.GlassEdge, shape)
+            .alpha(if (disabled) 0.45f else 1f)
+            .pressable(onClick = onClick)
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 10.dp else 12.dp),
+    ) {
+        Column(horizontalAlignment = if (compact) Alignment.CenterHorizontally else Alignment.Start,
+            modifier = Modifier.fillMaxWidth()) {
+            if (icon != null) {
+                Box(Modifier.size(if (compact) 30.dp else 34.dp).clip(RoundedCornerShape(10.dp))
+                    .background(if (selected) C.Accent else SolidColor(Color(0x1AFFFFFF))),
+                    contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = if (selected) Color.White else C.Sub, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            Text(title, color = if (selected) C.Text else C.Sub, fontSize = if (compact) 13.sp else 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1)
+            if (subtitle != null) Text(subtitle, color = if (selected) C.Sub else C.Faint, fontSize = 11.sp,
+                maxLines = 2, lineHeight = 14.sp,
+                textAlign = if (compact) androidx.compose.ui.text.style.TextAlign.Center else null)
+        }
+        if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = C.Violet,
+            modifier = Modifier.align(Alignment.TopEnd).size(18.dp))
+        else if (badge != null) Text(badge, color = C.Amber, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.TopEnd).clip(CircleShape).background(C.Amber.copy(alpha = 0.15f))
+                .padding(horizontal = 6.dp, vertical = 1.dp))
+    }
+}
+
+/** Scrollable row of pills for quick choices with short labels (QR type, letter style…). */
+@Composable
+fun <T> ChoiceChips(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit,
+                    icon: (T) -> ImageVector? = { null }) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (o in options) {
+            val on = o == selected
+            Row(
+                Modifier.clip(CircleShape)
+                    .background(if (on) C.Primary else SolidColor(Color(0x14FFFFFF)))
+                    .border(1.dp, if (on) SolidColor(Color(0x40FFFFFF)) else C.GlassEdge, CircleShape)
+                    .pressable { onSelect(o) }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                icon(o)?.let { Icon(it, null, tint = if (on) Color.White else C.Sub, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
+                Text(label(o), color = if (on) Color.White else C.Sub, fontSize = 14.sp,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** One row of a settings-style list: icon tile, title, optional detail and badge, chevron. */
+@Composable
+fun NavRow(icon: ImageVector, title: String, detail: String? = null, badge: String? = null,
+           badgeColor: Color = C.Red, brush: Brush = C.Accent, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).pressable(onClick = onClick).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconTile(icon, 38.dp, brush)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            if (detail != null) Text(detail, color = C.Sub, fontSize = 12.sp, maxLines = 2)
+        }
+        if (badge != null) {
+            Text(badge, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(CircleShape).background(badgeColor).padding(horizontal = 8.dp, vertical = 2.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = C.Faint, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** Thin divider between rows inside a [Section]. */
+@Composable
+fun RowDivider() = Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x12FFFFFF)))

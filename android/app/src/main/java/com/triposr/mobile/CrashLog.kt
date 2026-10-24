@@ -39,6 +39,7 @@ object CrashLog {
     fun init(application: Application) {
         app = application
         dir = File(application.filesDir, "logs").apply { mkdirs() }
+        Health.init(dir)
         val previousLog = File(dir, "previous_session.log")
         val session = File(dir, "session.log")
         if (session.exists()) session.renameTo(previousLog)
@@ -54,6 +55,8 @@ object CrashLog {
                 previousLog.takeIf { it.exists() }?.readLines()?.takeLast(120))
             else -> null
         }
+        if (javaCrash != null) Health.report("קריסה", "האפליקציה קרסה בהפעלה הקודמת (דוח מלא למעלה)")
+        else if (exit != null) Health.report("קריסה", "ההפעלה הקודמת הסתיימה בתקלה: ${exit.lineSequence().first()}")
 
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
@@ -78,6 +81,7 @@ object CrashLog {
 
     fun error(where: String, e: Throwable) {
         log("ERROR in $where: $e")
+        Health.report(where, e.toString())
         lastError = buildReport("Error in $where", e, lines.toList().takeLast(80))
     }
 
@@ -94,6 +98,7 @@ object CrashLog {
         File(dir, "previous_session.log").delete()
         dismissPending()
         lastError = null
+        Health.clear()
     }
 
     /** Full diagnostics: device, app, model state plus recent log lines. */
@@ -112,6 +117,11 @@ object CrashLog {
         appendLine("Model: ${runCatching { ModelStore.describe(app) }.getOrDefault("?")}")
         appendLine("Settings: ${runCatching { Settings.describe(app) }.getOrDefault("?")}")
         appendLine("Extras: ${runCatching { Extras.describe(app) }.getOrDefault("?")}")
+        val problems = runCatching { Health.problems() }.getOrDefault(emptyList())
+        if (problems.isNotEmpty()) {
+            appendLine("--- Problems (${problems.size}) ---")
+            problems.forEach { appendLine(it.toString()) }
+        }
         if (e != null) {
             appendLine("--- Exception ---")
             appendLine(e.stackTraceToString().take(6000))

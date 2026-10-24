@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -28,6 +29,8 @@ sealed interface Screen {
     data object Settings : Screen
     data object Diagnostics : Screen
     data object Extra : Screen
+    data object Models : Screen
+    data object Legal : Screen
 }
 
 data class JobState(
@@ -104,6 +107,24 @@ object AppState {
     @Volatile private var cancelRequested = false
 
     val backStack = mutableStateListOf<Screen>(Screen.Home)
+
+    /** The "what do you want to make?" sheet opened by the + button. */
+    var createMenu by mutableStateOf(false)
+    /** Which printable the creations screen opens on. */
+    var extraKind by mutableStateOf(Creations.Kind.LITHOPHANE)
+    /** 0 = terms, 1 = privacy, 2 = open-source licenses. */
+    var legalTab by mutableIntStateOf(0)
+
+    fun openExtra(kind: Creations.Kind) {
+        createMenu = false
+        extraKind = kind
+        navigate(Screen.Extra)
+    }
+
+    fun openLegal(tab: Int) {
+        legalTab = tab
+        navigate(Screen.Legal)
+    }
     val screen: Screen get() = backStack.last()
 
     var input by mutableStateOf<Bitmap?>(null)
@@ -140,6 +161,7 @@ object AppState {
             }
         }
         scope.launch { reloadProjects() }
+        scope.launch(Dispatchers.IO) { Health.runStartupChecks(app) }
     }
 
     fun crashedBefore(b: Backend) = prefs().getBoolean("crashed_${b.name}", false)

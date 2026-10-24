@@ -24,6 +24,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Gavel
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.PrivacyTip
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.ui.graphics.Brush
+import com.triposr.mobile.Health
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -58,7 +69,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -71,8 +81,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.triposr.mobile.AppState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Warning
 import com.triposr.mobile.Mesh
 import com.triposr.mobile.PrintModel
 import com.triposr.mobile.Printability
@@ -425,7 +433,6 @@ fun ProjectsScreen() {
 fun SettingsScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val status = rememberModelStatus()
     var backend by remember { mutableStateOf(Settings.backendChoice(ctx)) }
     var quality by remember { mutableStateOf(Settings.quality(ctx)) }
     var removeBg by remember { mutableStateOf(Settings.removeBackground(ctx)) }
@@ -433,62 +440,40 @@ fun SettingsScreen() {
     var texture by remember { mutableStateOf(Settings.bakeTexture(ctx)) }
     var checking by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    var showLicenses by remember { mutableStateOf(false) }
-    var crashTick by remember { mutableStateOf(0) }
+    val problems = remember(Health.tick.intValue) { Health.problems() }
+    val errors = problems.count { it.level == Health.Level.ERROR }
 
     Column(Modifier.fillMaxSize()) {
         TopBar("הגדרות")
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Section(title = "מודל ה-AI") {
-                ModelCard(status, compact = false)
-                if (status is ModelStore.Status.Ready) NpuPackCard(rememberModelStatus(ModelStore.NPU))
-                if (status is ModelStore.Status.Ready && !AppState.isRunning) SoftButton("מחק מודל · ${ModelStore.sizeOnDisk(ctx) shr 20} MB",
-                    Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) { confirmDelete = true }
+            Section(Modifier.enter(0)) {
+                NavRow(Icons.Rounded.BugReport, "דוחות ותקלות",
+                    when {
+                        errors > 0 -> "$errors שגיאות זוהו · לחץ להעתקה ושליחה"
+                        problems.isNotEmpty() -> "${problems.size} אזהרות · הכל עובד"
+                        CrashLog.pendingReport != null -> "יש דוח קריסה מהפעלה קודמת"
+                        else -> "לא זוהו תקלות"
+                    },
+                    badge = if (errors > 0) "$errors" else if (problems.isNotEmpty()) "${problems.size}" else null,
+                    badgeColor = if (errors > 0) C.Red else C.Amber,
+                    brush = Brush.linearGradient(listOf(Color(0xFFF43F5E), Color(0xFFF97316)))) { AppState.navigate(Screen.Diagnostics) }
+                RowDivider()
+                NavRow(Icons.Rounded.Memory, "מודלים ומעבדים", "הורדה, מחיקה ובדיקת NPU/GPU") { AppState.navigateRoot(Screen.Models) }
             }
-            ModelPacksSection()
-            ExtrasSection()
-            Section(title = "ברירות מחדל") {
+            Section(Modifier.enter(1), title = "ברירות מחדל ליצירה") {
                 Text("מעבד", color = C.Sub, fontSize = 13.sp)
                 BackendPicker(backend) { backend = it; Settings.setBackendChoice(ctx, it) }
                 Text("רמת פירוט", color = C.Sub, fontSize = 13.sp)
-                Segmented(Quality.entries.toList(), quality, { it.label }, { quality = it; Settings.setQuality(ctx, it) })
+                QualityCards(quality) { quality = it; Settings.setQuality(ctx, it) }
+                RowDivider()
                 ToggleRow("הסרת רקע אוטומטית", null, removeBg) { removeBg = it; Settings.setRemoveBackground(ctx, it) }
                 ToggleRow("החלקת משטח", null, smooth) { smooth = it; Settings.setSmooth(ctx, it) }
                 ToggleRow("צביעה חדה (טקסטורה)", "פנים, בגדים והדפסים חדים יותר · מוסיף כמה שניות", texture) {
                     texture = it; Settings.setBakeTexture(ctx, it)
                 }
             }
-            Section(title = "יכולות המכשיר") {
-                Text("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · ${android.os.Build.SOC_MODEL}" +
-                    if (Capabilities.isSnapdragon()) " (Snapdragon)" else " (לא Snapdragon — רק CPU)", color = C.Text, fontSize = 13.sp)
-                val results = remember(ProbeUi.tick, crashTick) { Capabilities.results(ctx) }
-                for (r in results.values) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(r.backend.label, color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Chip(r.support.label + if (r.ms > 0) " · %.0f ms".format(r.ms) else "",
-                            if (r.support == Support.OK) C.Green else if (r.support == Support.UNKNOWN) C.Sub else C.Orange)
-                    }
-                    if (r.detail.isNotEmpty() && r.support != Support.OK) Text(r.detail.take(160), color = C.Sub, fontSize = 11.sp)
-                }
-                if (ProbeUi.running) Text(ProbeUi.status, color = C.Violet, fontSize = 12.sp)
-                SoftButton(if (ProbeUi.running) "בודק…" else "בדוק שוב את המעבדים", Modifier.fillMaxWidth(),
-                    enabled = !ProbeUi.running && status is ModelStore.Status.Ready) {
-                    Backend.entries.forEach { AppState.clearCrashed(it) }
-                    crashTick++
-                    startProbe(ctx)
-                }
-            }
-            val crashed = remember(crashTick) { Backend.entries.filter { AppState.crashedBefore(it) } }
-            if (crashed.isNotEmpty()) Section(title = "מעבדים שנסגרו בעבר") {
-                Text("האפליקציה זוכרת מעבד שבזמן העבודה עליו היא נסגרה, ומחליפה אותו אוטומטית. אפשר לאפס ולנסות שוב.",
-                    color = C.Sub, fontSize = 13.sp)
-                crashed.forEach { b ->
-                    SoftButton("אפס ונסה שוב את ${b.label}", Modifier.fillMaxWidth()) { AppState.clearCrashed(b); crashTick++ }
-                }
-            }
-            Section(title = "עדכונים") {
+            Section(Modifier.enter(2), title = "עדכונים") {
                 Text("גרסה ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", color = C.Text)
                 SoftButton(if (checking) "בודק…" else "בדוק עדכונים", Modifier.fillMaxWidth(), enabled = !checking) {
                     checking = true
@@ -502,65 +487,78 @@ fun SettingsScreen() {
                 updateMsg?.let { Text(it, color = C.Sub, fontSize = 13.sp) }
                 UpdateCard()
             }
-            Section(title = "דוחות ותקלות") {
-                Text("דוח מצב מלא של המכשיר, האפליקציה והקריסה האחרונה — להעתקה ולהדבקה בצ'אט.", color = C.Sub, fontSize = 13.sp)
-                GradientButton("פתח דוח מצב וקריסות", Modifier.fillMaxWidth()) { AppState.navigate(Screen.Diagnostics) }
+            Section(Modifier.enter(3), title = "משפטי ופרטיות") {
+                NavRow(Icons.Rounded.Gavel, "תנאי שימוש", "אחריות על התוכן שאתה יוצר") { AppState.openLegal(0) }
+                RowDivider()
+                NavRow(Icons.Rounded.PrivacyTip, "מדיניות פרטיות", "התמונות לא יוצאות מהטלפון") { AppState.openLegal(1) }
+                RowDivider()
+                NavRow(Icons.Rounded.Description, "רישיונות קוד פתוח", "המודלים והספריות שבאפליקציה") { AppState.openLegal(2) }
             }
-            Section(title = "אודות") {
-                Text("TripoSR (VAST AI & Stability AI, רישיון MIT) רץ מקומית עם ONNX Runtime ו-Qualcomm QNN. " +
-                    "הסרת רקע: U2-Net (Apache-2.0).", color = C.Sub, fontSize = 13.sp)
-                SoftButton("רישיונות קוד פתוח", Modifier.fillMaxWidth()) { showLicenses = true }
+            Section(Modifier.enter(4), title = "אודות") {
+                Text("תמונה לתלת־ממד ויצירות להדפסה, ישירות בטלפון. המודלים (TripoSR, TripoSG) רצים מקומית עם " +
+                    "ONNX Runtime ו-Qualcomm QNN, בלי שרת ובלי להעלות תמונות.", color = C.Sub, fontSize = 13.sp)
             }
             Spacer(Modifier.height(8.dp))
         }
     }
-    if (showLicenses) {
-        val text = remember { runCatching { ctx.assets.open("third_party_licenses.txt").bufferedReader().readText() }.getOrDefault("") }
-        AlertDialog(
-            onDismissRequest = { showLicenses = false }, containerColor = C.CardHigh,
-            title = { Text("רישיונות קוד פתוח", color = C.Text) },
-            text = {
-                androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
-                    Text(text, color = C.Sub, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        modifier = Modifier.verticalScroll(rememberScrollState()))
-                }
-            },
-            confirmButton = { TextButton({ showLicenses = false }) { Text("סגור", color = C.Violet) } },
-        )
-    }
-    if (confirmDelete) AlertDialog(
-        onDismissRequest = { confirmDelete = false }, containerColor = C.CardHigh,
-        title = { Text("למחוק את המודל?", color = C.Text) },
-        text = { Text("תצטרך להוריד אותו שוב (1.7GB) כדי ליצור מודלים חדשים. הפרויקטים השמורים נשארים.", color = C.Sub) },
-        confirmButton = { TextButton({ AppState.resetEngine(); ModelStore.delete(ctx); Capabilities.reset(ctx); confirmDelete = false }) { Text("מחק", color = C.Red) } },
-        dismissButton = { TextButton({ confirmDelete = false }) { Text("ביטול", color = C.Sub) } },
-    )
 }
 
 @Composable
 fun DiagnosticsScreen() {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0) }
-    val report = remember(tick) { CrashLog.diagnostics() }
+    var confirmClear by remember { mutableStateOf(false) }
+    val healthTick = Health.tick.intValue
+    val report = remember(tick, healthTick) { CrashLog.diagnostics() }
     val crash = remember(tick) { CrashLog.pendingReport }
-    val lastError = remember(tick) { CrashLog.lastError }
+    val lastError = remember(tick, healthTick) { CrashLog.lastError }
+    val problems = remember(tick, healthTick) { Health.problems() }
     Column(Modifier.fillMaxSize()) {
-        TopBar("דוח מצב וקריסות")
+        TopBar("דוחות ותקלות", onBack = { AppState.back() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Section {
+                Text("כל תקלה שהאפליקציה מזהה נרשמת כאן: בדיקה אוטומטית בכל הפעלה (ספריות, מודלים, אחסון, מעבדים) " +
+                    "וכל שגיאה בזמן עבודה. העתק ושלח לי את הדוח המלא.", color = C.Sub, fontSize = 13.sp)
+                GradientButton("העתק דוח מלא", Modifier.fillMaxWidth(), Icons.Rounded.ContentCopy) {
+                    Actions.copy(ctx, (crash?.let { it + "\n\n" } ?: "") + report, "הדוח")
+                }
+            }
+            Section(title = if (problems.isEmpty()) null else "תקלות שזוהו (${problems.size})") {
+                if (problems.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = C.Green)
+                    Spacer(Modifier.width(8.dp))
+                    Text("לא זוהו תקלות", color = C.Green, fontWeight = FontWeight.SemiBold)
+                }
+                problems.asReversed().forEach { p ->
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(if (p.level == Health.Level.ERROR) Icons.Rounded.Error else Icons.Rounded.Warning, null,
+                            tint = if (p.level == Health.Level.ERROR) C.Red else C.Amber, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${p.area} · ${p.time}", color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(p.message, color = C.Sub, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
             if (crash != null) ReportSection("קריסה מהפעלה קודמת", crash, C.Red)
             if (lastError != null) ReportSection("שגיאה אחרונה", lastError, C.Orange)
-            if (crash == null && lastError == null) Section {
-                Text("לא נרשמו קריסות או שגיאות 🎉", color = C.Green, fontWeight = FontWeight.SemiBold)
-            }
             ReportSection("דוח מצב מלא", report, C.Violet)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SoftButton("רענן", Modifier.weight(1f)) { tick++ }
-                SoftButton("נקה הכל", Modifier.weight(1f), color = C.Red) { CrashLog.clear(); tick++ }
+                SoftButton("רענן", Modifier.weight(1f), Icons.Rounded.Refresh) { tick++ }
+                SoftButton("נקה דוחות", Modifier.weight(1f), Icons.Rounded.Delete, color = C.Red) { confirmClear = true }
             }
             Spacer(Modifier.height(8.dp))
         }
     }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false }, containerColor = C.CardHigh,
+        title = { Text("לנקות את כל הדוחות?", color = C.Text) },
+        text = { Text("היומן, דוח הקריסה ורשימת התקלות יימחקו. אם יש תקלה שעוד לא שלחת, העתק אותה קודם.", color = C.Sub) },
+        confirmButton = { TextButton({ CrashLog.clear(); confirmClear = false; tick++ }) { Text("נקה", color = C.Red) } },
+        dismissButton = { TextButton({ confirmClear = false }) { Text("ביטול", color = C.Sub) } },
+    )
 }
 
 @Composable
