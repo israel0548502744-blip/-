@@ -166,13 +166,20 @@ object ModelStore {
 
     /** Total size of the pack in the release, or null if the release doesn't have all its files. */
     suspend fun availableSize(pack: Pack): Long? {
-        val assets = githubJson("releases/tags/${pack.tag}").assets().associateBy { it.name }
+        val assets = runCatching { githubJson("releases/tags/${pack.tag}").assets().associateBy { it.name } }
+            .onFailure { Health.report("הורדת מודלים", "${pack.title}: לא הצלחתי לקרוא את רשימת הקבצים: $it", Health.Level.WARNING) }
+            .getOrThrow()
         val files = pack.files()
-        if (files.isEmpty() || files.any { it !in assets }) return null
+        val missing = files.filter { it !in assets }
+        if (files.isEmpty() || missing.isNotEmpty()) {
+            CrashLog.log("${pack.key}: not available (${if (files.isEmpty()) "no chip" else "missing ${missing.joinToString()}"})")
+            return null
+        }
         return files.sumOf { assets.getValue(it).size }
     }
 
     suspend fun startDownload(ctx: Context, pack: Pack = MAIN) {
+        CrashLog.log("Download start: ${pack.key} (${pack.tag})")
         val assets = githubJson("releases/tags/${pack.tag}").assets().associateBy { it.name }
         val dm = ctx.getSystemService(DownloadManager::class.java)
         cancel(ctx, pack)

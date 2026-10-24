@@ -168,10 +168,11 @@ object AppState {
     fun clearCrashed(b: Backend) = prefs().edit().remove("crashed_${b.name}").apply()
 
     fun navigate(s: Screen) {
-        if (screen != s) backStack.add(s)
+        if (screen != s) { backStack.add(s); CrashLog.log("Screen: $s") }
     }
 
     fun navigateRoot(s: Screen) {
+        CrashLog.log("Screen: $s")
         backStack.clear()
         backStack.add(Screen.Home)
         if (s != Screen.Home) backStack.add(s)
