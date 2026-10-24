@@ -53,3 +53,28 @@ Next ideas, in order of value/effort:
   missing piece for TripoSG (geometry only). Evaluate size on device.
 - Text-to-3D: no small clean model found; FLUX.2 klein 4B (Apache-2.0) text-to-image + TripoSG
   remains the plan.
+
+## App structure and next UX steps (2026-10-24)
+
+Done: bottom bar Home · Gallery · + · Models · Settings; the + opens a "what do we make?" sheet
+(photo to 3D or one of six templates); reports live in Settings with an error badge; card
+pickers instead of segmented bars; startup self-check feeding the reports; terms accepted on
+first launch.
+
+Next ideas, in order of value:
+1. **Color for TripoSG from TripoSR's color field** (no new model or license, see LEGAL.md).
+2. **Onboarding (3 swipe cards)** on first launch: what the app does, best photo tips,
+   download the model. Replaces the bare terms dialog.
+3. **Gallery filters and search:** by kind (3D / keychain / QR …), sort by date or size,
+   long-press multi-select for delete/share.
+4. **"Print again" presets:** remember the last size/thickness per template.
+5. **Haptics and sound** on finish; a real app icon and splash screen with the new name.
+6. **Light theme** option (some users print outdoors / in bright rooms).
+7. **Accessibility:** content descriptions on all icons, TalkBack check, font-scale 1.3 check.
+8. **Play build flavor** without the self-updater (see PLAY_RELEASE.md).
+
+## App name candidates (2026-10-24)
+
+Rejected: "TripoSR 3D" (Tripo is VAST's brand), "3D Creator" (Sony's scanner app, 10M+ installs),
+"3DCraftor" (too close to the existing 3D modeller "3DCrafter"). Candidates still to clear
+with a trademark search: **Printora**, **Snap2Print**, **Formio**, **Pixel2Part**, **Makeo 3D**.

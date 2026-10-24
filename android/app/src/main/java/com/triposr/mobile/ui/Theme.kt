@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -486,7 +487,7 @@ private fun ChoiceCard(
                 textAlign = if (compact) androidx.compose.ui.text.style.TextAlign.Center else null)
         }
         if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = C.Violet,
-            modifier = Modifier.align(Alignment.TopEnd).size(18.dp))
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).size(16.dp))
         else if (badge != null) Text(badge, color = C.Amber, fontSize = 9.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.TopEnd).clip(CircleShape).background(C.Amber.copy(alpha = 0.15f))
                 .padding(horizontal = 6.dp, vertical = 1.dp))
