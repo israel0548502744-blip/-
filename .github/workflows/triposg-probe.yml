@@ -54,6 +54,15 @@ jobs:
           from onnxconverter_common import float16
           m = onnx.load("sg_dit0.onnx")
           m = float16.convert_float_to_float16(m, keep_io_types=True)
+          # The converter retypes tensors but leaves Cast(to=float) nodes inside the graph; make
+          # them cast to fp16, except the casts it added back to fp32 at the graph outputs.
+          outs = {o.name for o in m.graph.output}
+          for n in m.graph.node:
+              if n.op_type == "Cast" and not (set(n.output) & outs):
+                  for a in n.attribute:
+                      if a.name == "to" and a.i == onnx.TensorProto.FLOAT:
+                          a.i = onnx.TensorProto.FLOAT16
+          onnx.checker.check_model(m, full_check=False)
           onnx.save(m, "probe.onnx", save_as_external_data=True, all_tensors_to_one_file=True, location="probe.onnx.data")
           PY
             rm sg_dit0.onnx sg_dit0.onnx.data
@@ -65,6 +74,7 @@ jobs:
       - name: Compile for the NPU (SM8750)
         run: |
           pip install onnxruntime-qnn==2.7.0
+          set -o pipefail
           python convert/compile_npu.py /mnt/w/onnx/sg_probe_${{ matrix.name }}.onnx /mnt/w/npu --suffix _sm8750 --soc-model 69 --htp-arch 79 2>&1 | tail -5
       - name: Publish
         env:
