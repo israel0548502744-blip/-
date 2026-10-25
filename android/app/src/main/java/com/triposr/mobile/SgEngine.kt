@@ -141,6 +141,13 @@ class SgEngine(private val context: Context) : AutoCloseable {
         return lines.joinToString("\n")
     }
 
+    /** Summary of a tensor for the report: NaNs, range, mean of |x|. */
+    private fun stats(a: FloatArray): String {
+        var nan = 0; var lo = Float.MAX_VALUE; var hi = -Float.MAX_VALUE; var sum = 0.0
+        for (v in a) if (v.isNaN() || v.isInfinite()) nan++ else { if (v < lo) lo = v; if (v > hi) hi = v; sum += abs(v) }
+        return "n=${a.size} bad=$nan min=%.3g max=%.3g mean|x|=%.3g".format(lo, hi, sum / maxOf(1, a.size - nan))
+    }
+
     private fun tensor(data: FloatArray, vararg shape: Long) = OnnxTensor.createTensor(env, FloatBuffer.wrap(data), shape)
 
     private fun OrtSession.Result.floats(i: Int = 0): FloatArray =
@@ -236,8 +243,10 @@ class SgEngine(private val context: Context) : AutoCloseable {
             else denoise(cond, steps, seed, progress, cancelled)
         }
 
+        CrashLog.log("TripoSG cond ${stats(cond)}; latents ${stats(latents)}")
         val res = COARSE shl LEVELS
         val field = timed(Stage.FIELD) { field(latents, progress, cancelled) }
+        CrashLog.log("TripoSG field ${stats(field)}, inside ${"%.1f".format(field.count { it > 0 } * 100.0 / field.size)}%")
 
         var mesh = timed(Stage.SURFACE) { SurfaceNets.extract(field, res + 1, c.bounds) }
         if (mesh.vertexCount == 0) throw IllegalStateException("TripoSG לא מצא צורה. נסה תמונה אחרת.")
@@ -361,6 +370,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                             val vc = v[0]
                             for (k in 0 until n) lat[k] += dt * vc[k]
                         }
+                        if (i == 0) CrashLog.log("TripoSG step 1 velocity ${stats(v.last())}")
                         if (i == 0) CrashLog.log("TripoSG step 1 in %.2fs, %d of %d parts kept loaded".format(
                             (System.nanoTime() - t0) / 1e9, cached.count { it != null }, DIT_PARTS))
                         progress(Stage.DENOISE, (i + 1f) / steps)
@@ -377,7 +387,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
     /** One DiT evaluation per condition, part by part; each part runs all conditions while loaded. */
     private fun runDitSingle(session: (Int) -> Pair<OrtSession, Boolean>, latT: OnnxTensor, tembT: OnnxTensor,
                              conds: List<OnnxTensor>): List<FloatArray> {
-        val results = ArrayList<OrtSession.Result>()
+        val owned = ArrayList<OnnxTensor>()
         val named = conds.map { HashMap<String, OnnxTensor>() }
         val hidden = arrayOfNulls<OnnxTensor>(conds.size)
         val out = arrayOfNulls<FloatArray>(conds.size)
@@ -397,9 +407,14 @@ class SgEngine(private val context: Context) : AutoCloseable {
                         }
                         val r = sess.run(feeds)
                         if (i == DIT_PARTS - 1) { out[b] = r.use { it.floats() }; continue }
-                        results += r
-                        for ((k, name) in outputs.withIndex()) {
-                            if (name == "hidden") hidden[b] = r[k] as OnnxTensor else named[b][name] = r[k] as OnnxTensor
+                        // Own copies: outputs of a part that is closed right after must not point
+                        // into memory that goes away with it.
+                        r.use {
+                            for ((k, name) in outputs.withIndex()) {
+                                val t = it[k] as OnnxTensor
+                                val copy = tensor(it.floats(k), *t.info.shape).also { c -> owned += c }
+                                if (name == "hidden") hidden[b] = copy else named[b][name] = copy
+                            }
                         }
                     }
                 } finally {
@@ -407,7 +422,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                 }
             }
         } finally {
-            results.forEach { it.close() }
+            owned.forEach { it.close() }
         }
         return out.map { it ?: throw IllegalStateException("DiT has no final part") }
     }
