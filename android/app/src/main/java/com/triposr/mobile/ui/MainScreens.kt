@@ -641,6 +641,7 @@ private fun AdvancedOptions(smoothOn: Boolean, generator: Generator) {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
     var steps by remember { mutableFloatStateOf(Settings.sgSteps(ctx).toFloat()) }
+    var smartGuidance by remember { mutableStateOf(Settings.sgGuidanceInterval(ctx)) }
     var strength by remember { mutableFloatStateOf(Settings.smoothStrength(ctx).toFloat()) }
     var density by remember { mutableFloatStateOf(Settings.densityThreshold(ctx)) }
     Section {
@@ -666,6 +667,10 @@ private fun AdvancedOptions(smoothOn: Boolean, generator: Generator) {
                     Slider(steps, { steps = it.roundToInt().toFloat() }, valueRange = 10f..50f,
                         onValueChangeFinished = { Settings.setSgSteps(ctx, steps.roundToInt()) }, colors = sliderColors())
                     Text("יותר צעדים: צורה נקייה יותר אבל לאט יותר. הזמן עולה בערך ביחס ישר.", color = C.Sub, fontSize = 12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    ToggleRow("הכוונה חכמה (ניסיוני)",
+                        "מדלג על חישוב ההשוואה בצעדים הראשונים והאחרונים: כשליש מהר יותר. נסה עם ובלי והשווה.",
+                        smartGuidance) { smartGuidance = it; Settings.setSgGuidanceInterval(ctx, it) }
                 } else {
                     Text("עובי ומילוי: %.0f".format(density) + if (density == TripoEngine.DENSITY_THRESHOLD) " (ברירת מחדל)" else "",
                         color = C.Text, fontSize = 14.sp)

@@ -1,0 +1,203 @@
+name: TripoSG quality checks (guidance interval, int8)
+
+# Measures speed/size changes against the unchanged pipeline on the CPU (convert/sg_eval.py):
+#   guidance  guidance only inside a sigma interval vs. on every step, on 3 pictures
+#   int8      DiT parts quantized to int8 weights / 16-bit activations (quantize_triposg.py),
+#             compiled for the NPU into the triposg-v4-int8 pack, and checked on 2 pictures
+# Pictures: TripoSG's own examples (MIT), the ones not used for calibration. Results (metrics,
+# rendered shapes) go to the eval-results branch.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/triposg-eval.yml"]
+
+permissions:
+  contents: write
+
+env:
+  PACK_TAG: triposg-v4-int8
+  SG_BATCH: "1"
+  EXAMPLES: https://api.github.com/repos/VAST-AI-Research/TripoSG/contents/assets/example_data?ref=fc5c40990181e2a756c4e0b1c2f4d6b5202faf8c
+
+jobs:
+  guidance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Swap
+        run: |
+          sudo mkdir -p /mnt/w && sudo chown $USER /mnt/w
+          sudo fallocate -l 16G /mnt/swap && sudo chmod 600 /mnt/swap && sudo mkswap /mnt/swap && sudo swapon /mnt/swap
+      - name: Install
+        run: |
+          pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 scikit-image trimesh huggingface_hub \
+            safetensors scipy pillow matplotlib
+      - name: Fetch weights, pictures, background remover
+        run: |
+          python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
+          mkdir -p /mnt/w/img
+          curl -fsSL "$EXAMPLES" | python -c "import json,sys; [print(f['download_url']) for f in sorted(json.load(sys.stdin), key=lambda f: f['name']) if f['name'].lower().endswith(('.png','.jpg','.jpeg','.webp'))]" > /mnt/w/img/list.txt
+          head -5 /mnt/w/img/list.txt
+          i=0; while read -r u; do curl -fsSL -o /mnt/w/img/$i.${u##*.} "$u"; i=$((i+1)); [ $i -ge 5 ] && break; done < /mnt/w/img/list.txt
+          ls -la /mnt/w/img
+          curl -fsSL -o /mnt/w/isnet.onnx https://github.com/israel0548502744-blip/makeo3d-public/releases/download/extras-v1/isnet_general.onnx
+      - name: Guidance interval vs. every step
+        run: |
+          img=$(ls /mnt/w/img/${{ matrix.image }}.* | head -1)
+          python convert/sg_eval.py guidance --weights /mnt/w/weights --image "$img" --isnet /mnt/w/isnet.onnx \
+            --out out/guidance_${{ matrix.image }} --intervals 0.1-0.8,0.15-1,0-0.85
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guidance_${{ matrix.image }}
+          path: out
+
+  quantize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Swap
+        run: |
+          sudo mkdir -p /mnt/w && sudo chown $USER /mnt/w
+          sudo fallocate -l 20G /mnt/swap && sudo chmod 600 /mnt/swap && sudo mkswap /mnt/swap && sudo swapon /mnt/swap
+      - name: Install
+        run: |
+          pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 scikit-image huggingface_hub safetensors scipy pillow matplotlib
+      - name: Fetch weights, calibration pictures, background remover
+        run: |
+          python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
+          mkdir -p /mnt/w/img
+          curl -fsSL "$EXAMPLES" | python -c "import json,sys; [print(f['download_url']) for f in sorted(json.load(sys.stdin), key=lambda f: f['name']) if f['name'].lower().endswith(('.png','.jpg','.jpeg','.webp'))]" > /mnt/w/img/list.txt
+          i=0; while read -r u; do curl -fsSL -o /mnt/w/img/$i.${u##*.} "$u"; i=$((i+1)); [ $i -ge 5 ] && break; done < /mnt/w/img/list.txt
+          curl -fsSL -o /mnt/w/isnet.onnx https://github.com/israel0548502744-blip/makeo3d-public/releases/download/extras-v1/isnet_general.onnx
+      - name: Quantize (calibrated on pictures 3 and 4; the checks use 0-2)
+        run: |
+          imgs=$(ls /mnt/w/img/3.* /mnt/w/img/4.* | paste -sd,)
+          /usr/bin/time -f "%e s, %M KB peak" python convert/quantize_triposg.py --weights /mnt/w/weights \
+            --part ${{ matrix.part }} --images "$imgs" --isnet /mnt/w/isnet.onnx --steps 8 --out /mnt/w/qdq
+          ls -la /mnt/w/qdq
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qdq_${{ matrix.part }}
+          path: /mnt/w/qdq
+          retention-days: 7
+      - name: Compile for the NPU (SM8750)
+        run: |
+          pip install onnxruntime-qnn==2.7.0
+          set -o pipefail
+          python convert/compile_npu.py /mnt/w/qdq/sg_dit${{ matrix.part }}.onnx /mnt/w/npu --suffix _sm8750 --soc-model 69 --htp-arch 79 2>&1 | tail -5
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $PACK_TAG >/dev/null 2>&1 || gh release create $PACK_TAG --prerelease --latest=false \
+            --title "TripoSG NPU pack, int8 (experiment)" \
+            --notes "TripoSG (VAST-AI-Research, MIT). DiT in int8 weights / 16-bit activations, batch 1. Experimental."
+          gh release upload $PACK_TAG /mnt/w/npu/* --clobber
+
+  pack-rest:
+    # Config, DINOv2 and the VAE stay as in triposg-v3 (float); only the DiT is quantized.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy from triposg-v3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir rest && cd rest
+          gh release download triposg-v3 -R "$GITHUB_REPOSITORY" -p "sg_config.json" -p "sg_dino_*" -p "sg_vae_*"
+          ls -la
+          gh release view $PACK_TAG -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create $PACK_TAG -R "$GITHUB_REPOSITORY" \
+            --prerelease --latest=false --title "TripoSG NPU pack, int8 (experiment)" --notes "Experimental."
+          gh release upload $PACK_TAG * -R "$GITHUB_REPOSITORY" --clobber
+
+  int8:
+    needs: quantize
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [0, 1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Swap
+        run: |
+          sudo mkdir -p /mnt/w && sudo chown $USER /mnt/w
+          sudo fallocate -l 16G /mnt/swap && sudo chmod 600 /mnt/swap && sudo mkswap /mnt/swap && sudo swapon /mnt/swap
+      - name: Install
+        run: |
+          pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 scikit-image trimesh huggingface_hub \
+            safetensors scipy pillow matplotlib
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qdq_*
+          path: /mnt/w/qdq
+          merge-multiple: true
+      - name: Fetch weights, pictures, background remover
+        run: |
+          python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
+          mkdir -p /mnt/w/img
+          curl -fsSL "$EXAMPLES" | python -c "import json,sys; [print(f['download_url']) for f in sorted(json.load(sys.stdin), key=lambda f: f['name']) if f['name'].lower().endswith(('.png','.jpg','.jpeg','.webp'))]" > /mnt/w/img/list.txt
+          i=0; while read -r u; do curl -fsSL -o /mnt/w/img/$i.${u##*.} "$u"; i=$((i+1)); [ $i -ge 5 ] && break; done < /mnt/w/img/list.txt
+          curl -fsSL -o /mnt/w/isnet.onnx https://github.com/israel0548502744-blip/makeo3d-public/releases/download/extras-v1/isnet_general.onnx
+          ls -la /mnt/w/qdq
+      - name: int8 vs. float
+        run: |
+          img=$(ls /mnt/w/img/${{ matrix.image }}.* | head -1)
+          python convert/sg_eval.py int8 --weights /mnt/w/weights --image "$img" --isnet /mnt/w/isnet.onnx \
+            --qdq /mnt/w/qdq --out out/int8_${{ matrix.image }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: int8_${{ matrix.image }}
+          path: out
+
+  report:
+    needs: [guidance, int8]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{guidance,int8}_*"
+          path: results
+          merge-multiple: true
+      - name: Summary and eval-results branch
+        run: |
+          cd results
+          find . -name '*.glb' -delete
+          python3 - <<'PY' | tee summary.md >> "$GITHUB_STEP_SUMMARY"
+          import json, glob
+          print("| test | picture | variant | DiT passes | seconds | IoU | Chamfer % |")
+          print("|---|---|---|---|---|---|---|")
+          for f in sorted(glob.glob("*/metrics.json")):
+              m = json.load(open(f))
+              for k, v in m["variants"].items():
+                  print(f"| {f.split('/')[0]} | {m['image']} | {k} | {v['dit_passes']} | {v['seconds']} | {v.get('iou', '')} | {v.get('chamfer_pct', '')} |")
+          PY
+          git init -q -b eval-results
+          git add .
+          git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -qm "TripoSG eval for ${GITHUB_SHA}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}" eval-results

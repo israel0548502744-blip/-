@@ -67,7 +67,7 @@ object Settings {
     fun densityThreshold(ctx: Context) = prefs(ctx).getFloat("density_threshold", TripoEngine.DENSITY_THRESHOLD)
     fun setDensityThreshold(ctx: Context, v: Float) = prefs(ctx).edit().putFloat("density_threshold", v).apply()
 
-    fun resetAdvanced(ctx: Context) = prefs(ctx).edit().remove("smooth_strength").remove("density_threshold").remove("sg_steps").apply()
+    fun resetAdvanced(ctx: Context) = prefs(ctx).edit().remove("smooth_strength").remove("density_threshold").remove("sg_steps").remove("sg_guidance_interval").apply()
 
     /** Which model generates the shape; falls back to TripoSR when the chosen pack is missing. */
     fun generator(ctx: Context): Generator = prefs(ctx).getString("generator", null)
@@ -78,6 +78,13 @@ object Settings {
     fun sgSteps(ctx: Context) = prefs(ctx).getInt("sg_steps", DEFAULT_SG_STEPS)
     fun setSgSteps(ctx: Context, v: Int) = prefs(ctx).edit().putInt("sg_steps", v).apply()
     const val DEFAULT_SG_STEPS = 25
+
+    /**
+     * Advanced, TripoSG only: guidance (the extra "without the image" pass) only on the middle
+     * steps. Faster; off until the quality checks (sg_eval.py) and the user's own comparison agree.
+     */
+    fun sgGuidanceInterval(ctx: Context) = prefs(ctx).getBoolean("sg_guidance_interval", false)
+    fun setSgGuidanceInterval(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("sg_guidance_interval", v).apply()
 
     const val DEFAULT_SMOOTH = 3
 
@@ -93,7 +100,7 @@ object Settings {
     fun describe(ctx: Context) =
         "backend=${backendChoice(ctx) ?: "AUTO"}, quality=${quality(ctx)}, removeBg=${removeBackground(ctx)}, " +
             "smooth=${smooth(ctx)}x${smoothStrength(ctx)}, density=${densityThreshold(ctx)}, texture=${bakeTexture(ctx)}, " +
-            "generator=${generator(ctx)}, sgSteps=${sgSteps(ctx)}"
+            "generator=${generator(ctx)}, sgSteps=${sgSteps(ctx)}, sgGuidanceInterval=${sgGuidanceInterval(ctx)}"
 }
 
 enum class Quality(val label: String, val resolution: Int, val hint: String) {

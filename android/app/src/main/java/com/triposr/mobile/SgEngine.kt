@@ -48,6 +48,8 @@ class SgEngine(private val context: Context) : AutoCloseable {
         val guidance = o.getDouble("guidance_scale").toFloat()
         /** 2 = both guidance branches in one call; 1 = one branch per call (fits the NPU's memory). */
         val batch = o.optInt("batch", 2)
+        /** Sigma range in which the guidance pass runs when the "smart guidance" option is on. */
+        val guidanceInterval = o.optJSONArray("guidance_interval")?.let { it.getDouble(0) to it.getDouble(1) } ?: (0.1 to 0.8)
         val defaultSteps = o.getInt("default_steps")
         val shift = o.getJSONObject("scheduler").getDouble("shift")
         private val dino = o.getJSONObject("dino")
@@ -198,7 +200,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
 
     // ------------------------------------------------------------------ pipeline
 
-    fun generate(cut: Bitmap, steps: Int, seed: Long, smoothIterations: Int, progress: (Stage, Float) -> Unit,
+    fun generate(cut: Bitmap, steps: Int, seed: Long, smoothIterations: Int, guidanceInterval: Boolean = false, progress: (Stage, Float) -> Unit,
                  cancelled: () -> Boolean): TripoEngine.Output {
         val c = config
         val timings = LinkedHashMap<Stage, Double>()
@@ -221,7 +223,8 @@ class SgEngine(private val context: Context) : AutoCloseable {
         }
 
         val latents = timed(Stage.DENOISE) {
-            if (c.batch == 1) denoiseSingle(cond, steps, seed, progress, cancelled) else denoise(cond, steps, seed, progress, cancelled)
+            if (c.batch == 1) denoiseSingle(cond, steps, seed, guidanceInterval, progress, cancelled)
+            else denoise(cond, steps, seed, progress, cancelled)
         }
 
         val res = COARSE shl LEVELS
@@ -281,7 +284,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
      * A batch-2 part does not fit in the NPU's memory, and neither do all seven parts at once, so
      * as many parts as fit stay loaded and the rest are loaded for each step and closed again.
      */
-    private fun denoiseSingle(cond: FloatArray, steps: Int, seed: Long, progress: (Stage, Float) -> Unit,
+    private fun denoiseSingle(cond: FloatArray, steps: Int, seed: Long, guidanceInterval: Boolean, progress: (Stage, Float) -> Unit,
                               cancelled: () -> Boolean): FloatArray {
         val c = config
         val n = c.tokens * c.channels
@@ -292,6 +295,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
         if (c.parts.size != DIT_PARTS) throw IllegalStateException("חבילת TripoSG לא תואמת לגרסת האפליקציה, עדכן אחד מהם")
         val cached = arrayOfNulls<OrtSession>(DIT_PARTS)
         var budget = DIT_PARTS
+        var guidedSteps = 0
         /** The session for part i and whether it must be closed after use. */
         fun session(i: Int): Pair<OrtSession, Boolean> {
             cached[i]?.let { return it to false }
@@ -319,13 +323,22 @@ class SgEngine(private val context: Context) : AutoCloseable {
                     for (i in 0 until steps) {
                         if (cancelled()) throw CancellationException()
                         val t0 = System.nanoTime()
-                        val (vu, vc) = tensor(lat.copyOf(), 1, c.tokens.toLong(), c.channels.toLong()).use { latT ->
+                        // Outside the interval only the image branch runs (no guidance on this step).
+                        val guided = !guidanceInterval || sig[i] in c.guidanceInterval.first..c.guidanceInterval.second
+                        if (guided) guidedSteps++
+                        val v = tensor(lat.copyOf(), 1, c.tokens.toLong(), c.channels.toLong()).use { latT ->
                             tensor(timestepEmbedding(sig[i] * 1000).copyOf(c.width), 1, c.width.toLong()).use { tembT ->
-                                runDitSingle(::session, latT, tembT, listOf(uncondT, condT))
+                                runDitSingle(::session, latT, tembT, if (guided) listOf(uncondT, condT) else listOf(condT))
                             }
                         }
                         val dt = (sig[i] - sig[i + 1]).toFloat()
-                        for (k in 0 until n) lat[k] += dt * (vu[k] + c.guidance * (vc[k] - vu[k]))
+                        if (guided) {
+                            val (vu, vc) = v
+                            for (k in 0 until n) lat[k] += dt * (vu[k] + c.guidance * (vc[k] - vu[k]))
+                        } else {
+                            val vc = v[0]
+                            for (k in 0 until n) lat[k] += dt * vc[k]
+                        }
                         if (i == 0) CrashLog.log("TripoSG step 1 in %.2fs, %d of %d parts kept loaded".format(
                             (System.nanoTime() - t0) / 1e9, cached.count { it != null }, DIT_PARTS))
                         progress(Stage.DENOISE, (i + 1f) / steps)
@@ -335,6 +348,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
         } finally {
             cached.forEach { it?.close() }
         }
+        CrashLog.log("TripoSG: guidance on $guidedSteps of $steps steps")
         return lat
     }
 

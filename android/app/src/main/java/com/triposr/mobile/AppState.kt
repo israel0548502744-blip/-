@@ -380,12 +380,12 @@ object AppState {
         val t0 = System.nanoTime()
         val out = SgEngine(app).use { sg ->
             sg.generate(pv.cut!!, steps, seed = 0L, smoothIterations = if (smooth) Settings.smoothStrength(app) else 0,
-                progress = stage, cancelled = { cancelRequested })
+                guidanceInterval = Settings.sgGuidanceInterval(app), progress = stage, cancelled = { cancelRequested })
         }
         val timings = LinkedHashMap<String, Double>()
         timings[Stage.SEGMENT.name] = segSeconds
         for ((s, t) in out.timings) timings[s.name] = t
-        finish(out.mesh, pv.framed, "NPU", "TripoSG · $steps צעדים", timings, (System.nanoTime() - t0) / 1e9)
+        finish(out.mesh, pv.framed, "NPU", "TripoSG · $steps צעדים" + if (Settings.sgGuidanceInterval(app)) " · הכוונה חכמה" else "", timings, (System.nanoTime() - t0) / 1e9)
     }
 
     /** The "+" / "create" entry point: shows the running job, or a fresh create screen. */
