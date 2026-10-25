@@ -117,8 +117,10 @@ fun ExtraScreen() {
                 Creations.Kind.RELIEF -> "התמונה בולטת מהלוח לפי העומק שלה, עם הצבעים שלה."
                 Creations.Kind.QR -> "לוח עם קוד QR בולט שנסרק בטלפון: קישור, רשת Wi‑Fi, וואטסאפ או טלפון. החלף פילמנט בגובה 2 מ״מ לשני צבעים."
                 Creations.Kind.NAME -> "שם או מילה בולטים על בסיס, עם חור לטבעת. החלף פילמנט בגובה 2.4 מ״מ כדי שהאותיות יצאו בצבע אחר."
-                Creations.Kind.COOKIE -> "חותכן עוגיות בצורה של הציור או האובייקט בתמונה. מומלץ ציור פשוט עם קו מתאר ברור."
-                Creations.Kind.STAMP -> "חותמת לעוגיות, בצק, חימר או שעווה. ההדפסה הפוכה (מראה), כך שהחותם יוצא נכון."
+                Creations.Kind.COOKIE -> "חותכן עוגיות בצורה של הציור או האובייקט בתמונה. מומלץ ציור פשוט עם קו מתאר ברור. " +
+                    "הקובץ אינו אישור בטיחות למזון: הבטיחות תלויה בחומר, במדפסת ובניקוי."
+                Creations.Kind.STAMP -> "חותמת לעוגיות, בצק, חימר או שעווה. ההדפסה הפוכה (מראה), כך שהחותם יוצא נכון. " +
+                    "במגע עם מזון: הבטיחות תלויה בחומר, במדפסת ובניקוי."
             }, color = C.Sub, fontSize = 13.sp)
 
             when (kind) {
@@ -259,6 +261,7 @@ fun ExtrasSection() {
 fun ModelPacksSection() {
     if (com.triposr.mobile.NpuPack.chip() == null) return
     val ctx = LocalContext.current
+    if (!com.triposr.mobile.Region.triposgAllowed(ctx) && !ModelStore.isReady(ctx, ModelStore.TRIPOSG)) return
     val scope = rememberCoroutineScope()
     val pack = ModelStore.TRIPOSG
     val status = rememberModelStatus(pack)

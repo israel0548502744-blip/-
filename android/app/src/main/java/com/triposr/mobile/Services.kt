@@ -82,7 +82,7 @@ object Settings {
 
     /** Bake a texture (sharp colors) instead of only per-vertex colors. On by default. */
     /** Version of the terms the user accepted (0 = never). Bump TERMS_VERSION when they change. */
-    const val TERMS_VERSION = 1
+    const val TERMS_VERSION = 2
     fun termsAccepted(ctx: Context) = prefs(ctx).getInt("terms_version", 0) >= TERMS_VERSION
     fun acceptTerms(ctx: Context) = prefs(ctx).edit().putInt("terms_version", TERMS_VERSION).apply()
 
@@ -360,4 +360,24 @@ object Updater {
             .setDataAndType(uri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+}
+
+/**
+ * Where the phone is, from the SIM / mobile network (falls back to the language setting).
+ * TripoSG is not offered in the EU/EEA, the UK and South Korea until a lawyer confirms its
+ * weights may be distributed there (docs/LEGAL.md).
+ */
+object Region {
+    private val TRIPOSG_BLOCKED = setOf(
+        "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT",
+        "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "IS", "LI", "NO", "GB", "KR",
+    )
+
+    fun country(ctx: Context): String {
+        val tm = ctx.getSystemService(android.telephony.TelephonyManager::class.java)
+        return listOfNotNull(tm?.simCountryIso, tm?.networkCountryIso, java.util.Locale.getDefault().country)
+            .map { it.uppercase() }.firstOrNull { it.length == 2 } ?: ""
+    }
+
+    fun triposgAllowed(ctx: Context) = country(ctx) !in TRIPOSG_BLOCKED
 }

@@ -82,3 +82,22 @@ ONNX Runtime MIT, Qualcomm QAIRT under its license for compiling) allow this use
 **Texture for TripoSG without new licenses:** color the TripoSG mesh by querying TripoSR's color
 field (already on the phone) at the TripoSG vertices, after aligning the two coordinate frames.
 This adds a few seconds and no new model.
+
+## Second-opinion review (2026-10-25) and what changed
+
+An outside AI review agreed the main open risk is the TripoSG **weights** (distribution rights,
+especially in the EU), not our code. Also noted: the original TripoSG repo contains FlashVDM-derived
+code (Tencent Hunyuan FlashVDM license) besides HunyuanDiT. Neither is used now: `sg_model.py`
+implements only the plain decoder (no flash/hierarchical decoder code), and the app's
+coarse-to-fine extraction is our own Kotlin.
+
+Changes made:
+- **TripoSG is not offered in the EU/EEA, the UK and South Korea** (country from SIM / network,
+  `Region` in Services.kt) until the lawyer clears the weights. TripoSR (MIT, no Tencent code)
+  stays the default everywhere, so the app works fully without TripoSG.
+- Terms v2 (users re-accept): no license to third-party characters/brands is granted; we may
+  restrict infringing use; generated files are not a safety or regulatory approval (food contact);
+  infringement reports answered within 14 days.
+- Cookie cutter and stamp screens say the file is not a food-safety approval.
+- Still for professionals: official trademark search for "Makeo 3D" (Israel, USPTO, EUIPO);
+  DSA trader status before launch; accountant on when to open a business file.

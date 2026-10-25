@@ -110,7 +110,7 @@ object CrashLog {
         appendLine("App: ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})")
         appendLine("SoC: ${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}")
-        appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+        appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), region ${runCatching { Region.country(app) }.getOrDefault("?")}")
         val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mem = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
         appendLine("RAM: ${mem.availMem shr 20} MB free of ${mem.totalMem shr 20} MB, heap limit ${am.largeMemoryClass} MB")
