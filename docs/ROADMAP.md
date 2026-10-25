@@ -78,3 +78,9 @@ Next ideas, in order of value:
 Rejected: "TripoSR 3D" (Tripo is VAST's brand), "3D Creator" (Sony's scanner app, 10M+ installs),
 "3DCraftor" (too close to the existing 3D modeller "3DCrafter"). Candidates still to clear
 with a trademark search: **Printora**, **Snap2Print**, **Formio**, **Pixel2Part**, **Makeo 3D**.
+
+## Early-user reward (owner, 2026-10-25)
+When the paid "Pro" in-app purchase is added (~6 months after launch), everyone who installed
+before that date keeps everything free. Implementation: the first launch stores a signed
+"early user" flag locally and, for reinstalls, Play's purchase history of a free "early access"
+item claimed automatically during the free period (survives reinstall and new phones).
