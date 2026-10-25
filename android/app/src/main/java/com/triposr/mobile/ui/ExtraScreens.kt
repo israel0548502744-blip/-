@@ -272,6 +272,9 @@ fun ModelPacksSection() {
     var importing by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    val probe = rememberModelStatus(ModelStore.SG_PROBE)
+    var probeSize by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) { probeSize = runCatching { ModelStore.availableSize(ModelStore.SG_PROBE) }.getOrNull() }
     LaunchedEffect(Unit) { size = runCatching { ModelStore.availableSize(pack) }.getOrNull() }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree == null) return@rememberLauncherForActivityResult
@@ -312,6 +315,17 @@ fun ModelPacksSection() {
                         }
                     }
                     testResult?.let { Text(it + "\n(נשמר גם בדוח המלא)", color = C.Sub, fontSize = 11.sp) }
+                    when (probe) {
+                        ModelStore.Status.Ready -> Text("קבצי הבדיקה מותקנים ונכללים בבדיקה", color = C.Faint, fontSize = 11.sp)
+                        is ModelStore.Status.Downloading -> GlowBar(probe.done.toFloat() / probe.total, Modifier.fillMaxWidth(), C.Primary)
+                        else -> SoftButton("הורד קבצי בדיקה" + (probeSize?.let { " · ${it shr 20} MB" } ?: ""), Modifier.fillMaxWidth(),
+                            enabled = probeSize != null) {
+                            scope.launch {
+                                runCatching { ModelStore.startDownload(ctx, ModelStore.SG_PROBE) }
+                                    .onFailure { CrashLog.error("TripoSG probe download", it); err = it.message }
+                            }
+                        }
+                    }
                     SoftButton("מחק · ${ModelStore.sizeOnDisk(ctx, pack) shr 20} MB", Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) {
                         if (Settings.generator(ctx) == Generator.TRIPOSG) Settings.setGenerator(ctx, Generator.TRIPOSR)
                         ModelStore.delete(ctx, pack)

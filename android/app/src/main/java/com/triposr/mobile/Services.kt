@@ -140,6 +140,10 @@ object ModelStore {
     val MAIN = Pack("models", "TripoSR — מודל תלת־ממד") { FILES }
     val NPU = Pack("npu", "TripoSR — חבילת NPU") { NpuPack.files() }
     /** TripoSG compiled for this chip's NPU (experimental, ~3 GB). Only offered on supported chips. */
+    /** Smaller variants of the first TripoSG part, only to find what fits in the NPU's memory. */
+    val SG_PROBE = Pack("sg_probe", "TripoSG — קבצי בדיקה", "triposg-probe") {
+        NpuPack.chip()?.let { c -> SgEngine.PROBES.flatMap { listOf("sg_probe_${it}_${c}_ctx.onnx", "sg_probe_${it}_${c}_ctx_qnn.bin") } } ?: emptyList()
+    }
     val TRIPOSG = Pack("triposg", "TripoSG — מודל צורה מדויק", "triposg-v1") { NpuPack.chip()?.let { SgEngine.files(it) } ?: emptyList() }
 
     sealed interface Status {

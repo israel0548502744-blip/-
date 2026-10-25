@@ -1,0 +1,73 @@
+name: TripoSG NPU memory probe
+
+# The first DiT part (3 blocks, batch 2, 860 MB) fails to load on the phone's NPU with QNN error
+# 1002 (memory). This builds smaller variants of that one part so the app's load test can show
+# which size fits: fewer blocks, batch 1 (guidance branches run one after the other), fp16 weights.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PACK_TAG: triposg-probe
+
+jobs:
+  variant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: b1x3, batch: 1, blocks: 3, fp16: 0 }
+          - { name: b2x1, batch: 2, blocks: 1, fp16: 0 }
+          - { name: b1x1, batch: 1, blocks: 1, fp16: 0 }
+          - { name: b1x3h, batch: 1, blocks: 3, fp16: 1 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Disk and swap
+        run: |
+          sudo mkdir -p /mnt/w && sudo chown $USER /mnt/w
+          sudo fallocate -l 16G /mnt/swap && sudo chmod 600 /mnt/swap && sudo mkswap /mnt/swap && sudo swapon /mnt/swap
+      - name: Install
+        run: |
+          pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "numpy<2" onnx onnxruntime onnxconverter-common transformers==4.46.3 huggingface_hub safetensors
+      - name: Fetch TripoSG weights (MIT)
+        run: python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
+      - name: Export the first DiT part
+        env:
+          SG_BATCH: ${{ matrix.batch }}
+          SG_BLOCKS_PER_PART: ${{ matrix.blocks }}
+        run: |
+          python convert/export_triposg.py --weights /mnt/w/weights --out /mnt/w/onnx --parts dit0
+          cd /mnt/w/onnx
+          if [ "${{ matrix.fp16 }}" = 1 ]; then
+            python - <<'PY'
+          import onnx
+          from onnxconverter_common import float16
+          m = onnx.load("sg_dit0.onnx")
+          m = float16.convert_float_to_float16(m, keep_io_types=True)
+          onnx.save(m, "probe.onnx", save_as_external_data=True, all_tensors_to_one_file=True, location="probe.onnx.data")
+          PY
+            rm sg_dit0.onnx sg_dit0.onnx.data
+            mv probe.onnx sg_probe_${{ matrix.name }}.onnx
+          else
+            mv sg_dit0.onnx sg_probe_${{ matrix.name }}.onnx
+          fi
+          ls -la
+      - name: Compile for the NPU (SM8750)
+        run: |
+          pip install onnxruntime-qnn==2.7.0
+          python convert/compile_npu.py /mnt/w/onnx/sg_probe_${{ matrix.name }}.onnx /mnt/w/npu --suffix _sm8750 --soc-model 69 --htp-arch 79 2>&1 | tail -5
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $PACK_TAG >/dev/null 2>&1 || gh release create $PACK_TAG --prerelease --latest=false \
+            --title "TripoSG NPU memory probe" --notes "Test files for the app's NPU load test. Not a usable model."
+          gh release upload $PACK_TAG /mnt/w/npu/* --clobber

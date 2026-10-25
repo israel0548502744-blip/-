@@ -32,6 +32,8 @@ class SgEngine(private val context: Context) : AutoCloseable {
         /** The DiT is split into this many parts (3 blocks each), see DIT_PARTS in export_triposg.py. */
         const val DIT_PARTS = 7
         val GRAPHS = listOf("sg_dino") + (0 until DIT_PARTS).map { "sg_dit$it" } + listOf("sg_vae_kv", "sg_vae_query")
+        /** Probe variants (batch x blocks, h = fp16 weights), see triposg-probe.yml. */
+        val PROBES = listOf("b1x1", "b2x1", "b1x3", "b1x3h")
         const val COARSE = 64
         const val LEVELS = 2
 
@@ -115,6 +117,13 @@ class SgEngine(private val context: Context) : AutoCloseable {
             runCatching { open(g).close() }
                 .onSuccess { line("$g alone: OK") }
                 .onFailure { line("$g alone: FAILED: ${it.message?.take(160)}") }
+        }
+        if (ModelStore.isReady(context, ModelStore.SG_PROBE)) for (p in PROBES) {
+            val g = "sg_probe_$p"
+            val size = ModelStore.file(context, "${g}_${chip}_ctx_qnn.bin").length() shr 20
+            runCatching { open(g).close() }
+                .onSuccess { line("$g ($size MB): OK") }
+                .onFailure { line("$g ($size MB): FAILED: ${it.message?.substringAfterLast("Error code:")?.take(60)}") }
         }
         return lines.joinToString("\n")
     }

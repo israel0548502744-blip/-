@@ -36,10 +36,13 @@ import torch
 from torch import nn
 
 N_TOKENS = 2048
-BATCH = 2  # classifier-free guidance: [unconditional, conditional]
+# Classifier-free guidance: [unconditional, conditional]. SG_BATCH=1 exports one branch at a
+# time (the app then runs each part twice), for NPU memory probes.
+BATCH = int(os.environ.get("SG_BATCH", "2"))
 # Three blocks per part (~205M params, ~0.8 GB fp32): seven-block parts ran the CI runner out of
 # memory while compiling for the NPU.
-DIT_PARTS = [(i, min(i + 2, 20)) for i in range(0, 21, 3)]
+_PER_PART = int(os.environ.get("SG_BLOCKS_PER_PART", "3"))
+DIT_PARTS = [(i, min(i + _PER_PART - 1, 20)) for i in range(0, 21, _PER_PART)]
 QUERY_CHUNK = 16384
 BOUNDS = 1.005
 
@@ -310,7 +313,7 @@ def dit_inputs(pipe, idx, rng):
     """Realistic inputs for part idx: noise + a random condition pushed through the earlier parts."""
     c = pipe.transformer.config
     t = cond_tokens(pipe)
-    cond = torch.cat([torch.zeros(1, t, c.cross_attention_dim), torch.randn(1, t, c.cross_attention_dim)])
+    cond = torch.cat([torch.zeros(1, t, c.cross_attention_dim), torch.randn(1, t, c.cross_attention_dim)])[-BATCH:]
     lat = torch.from_numpy(rng.standard_normal((BATCH, N_TOKENS, c.in_channels)).astype(np.float32))
     temb = torch.from_numpy(timestep_sin([700.0] * BATCH, c.width))
     parts = [DitPart(pipe.transformer, lo, hi) for lo, hi in DIT_PARTS]
