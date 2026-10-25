@@ -45,29 +45,21 @@ jobs:
           name: Makeo3D-apk
           path: Makeo3D.apk
 
-      - name: Publish as the latest release (the app's updater reads it)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-${{ github.run_number }}
-          name: Makeo 3D build ${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
-          make_latest: true
-          files: Makeo3D.apk
-          body: |
-            Install Makeo3D.apk on the phone (allow installing from unknown sources).
-            The AI model (~1.7 GB) is downloaded once from inside the app.
-            Built from ${{ github.ref_name }} @ ${{ github.sha }}.
+      # gh CLI instead of softprops/action-gh-release: its current v2 fails here with a 403.
+      - name: Publish as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-${{ github.run_number }}
+        run: |
+          printf 'Install Makeo3D.apk on the phone (allow installing from unknown sources).\nThe AI models are downloaded from inside the app.\nBuilt from %s @ %s.\n' "${{ github.ref_name }}" "${{ github.sha }}" > notes.txt
+          gh release create "$TAG" Makeo3D.apk --target "${{ github.sha }}" --title "Makeo 3D build ${{ github.run_number }}" \
+            --notes-file notes.txt --latest
 
       - name: Publish to the public repository (where the app looks for updates)
         if: env.PUBLIC_TOKEN != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: israel0548502744-blip/makeo3d-public
-          token: ${{ env.PUBLIC_TOKEN }}
-          tag_name: apk-${{ github.run_number }}
-          name: Makeo 3D build ${{ github.run_number }}
-          make_latest: true
-          files: Makeo3D.apk
-          body: |
-            Install Makeo3D.apk on the phone (allow installing from unknown sources).
-            The AI models are downloaded from inside the app.
+        env:
+          GH_TOKEN: ${{ env.PUBLIC_TOKEN }}
+          TAG: apk-${{ github.run_number }}
+        run: |
+          gh release create "$TAG" Makeo3D.apk -R israel0548502744-blip/makeo3d-public \
+            --title "Makeo 3D build ${{ github.run_number }}" --notes-file notes.txt --latest
