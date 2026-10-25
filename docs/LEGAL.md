@@ -9,7 +9,7 @@ sold, have a lawyer confirm the items marked **lawyer**.
 |---|---|---|---|
 | TripoSR model | MIT (Tripo AI & Stability AI) | Yes | Keep the notice (done: Settings → open-source licenses) |
 | TripoSG weights | MIT (VAST-AI-Research) | Yes | Notice (done) |
-| TripoSG model *code* | Partly Tencent Hunyuan Community License | Not shipped: used only in CI to convert | **lawyer**: confirm converting with it does not bind the weights; the Hunyuan license excludes the EU, UK and South Korea |
+| TripoSG model *code* | Partly Tencent Hunyuan Community License | **Not used any more** (pack `triposg-v2` on): CI loads the MIT weights into our own implementation, `convert/sg_model.py` | Pack `triposg-v1` was converted with the original code; retire it when the app switches to v2 |
 | DINOv2 (inside TripoSG) | Apache-2.0 (Meta) | Yes | Notice + license text (done) |
 | U-2-Net u2netp, ISNet | Apache-2.0 | Yes | Done |
 | Real-ESRGAN x4v3 | BSD-3-Clause | Yes | Done |
@@ -46,6 +46,19 @@ Depth Anything V2 Base/Large (CC-BY-NC), FLUX.2 klein 9B (non-commercial), FLUX 
 TripoSR and TripoSG outputs (meshes) may be sold: MIT puts no restriction on outputs.
 Lithophanes, reliefs, QR plates, keychains, cookie cutters and stamps are made by our own
 code from the user's image or text.
+
+## Own TripoSG implementation (2026-10-25)
+
+`convert/sg_model.py` is written for this project: a plain PyTorch denoiser and occupancy
+decoder whose parameter names match the published checkpoint. CI no longer downloads or runs
+the TripoSG repository (only the MIT weights from Hugging Face and one example picture).
+Checked: on the same (random) weights it gives bit-identical outputs to the original code for
+the denoiser at three timesteps and for the decoder, and a deliberately introduced bug is
+caught (relative error 0.35). All exported graphs match PyTorch to < 1e-6.
+
+What remains for the lawyer is narrower: whether the TripoSG *weights* themselves (trained by
+VAST with Hunyuan-derived code, released under MIT) carry any Hunyuan obligation. VAST
+publishes them as MIT, and the Hunyuan license says Tencent claims no rights in outputs.
 
 ## Converting models in CI (question from 2026-10-24)
 

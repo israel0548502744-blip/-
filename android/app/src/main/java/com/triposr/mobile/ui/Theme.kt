@@ -84,7 +84,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.triposr.mobile.R
 import kotlin.math.sin
-import kotlin.random.Random
 
 /** Design tokens: deep-space purple, glass surfaces, pink→orange primary action. */
 object C {
@@ -156,7 +155,7 @@ fun TripoTheme(animations: Boolean = true, content: @Composable () -> Unit) {
     }
 }
 
-/** Deep-space gradient with slowly drifting nebula glows and faint twinkling stars. */
+/** Deep-space gradient with slowly drifting nebula glows. */
 @Composable
 fun SpaceBackground(modifier: Modifier = Modifier) {
     val animate = LocalAnimations.current
@@ -164,10 +163,6 @@ fun SpaceBackground(modifier: Modifier = Modifier) {
         val inf = rememberInfiniteTransition(label = "space")
         inf.animateFloat(0f, 1f, infiniteRepeatable(tween(16000, easing = LinearEasing)), label = "t").value
     } else 0.3f
-    val stars = remember {
-        val r = Random(7)
-        List(70) { Triple(Offset(r.nextFloat(), r.nextFloat()), r.nextFloat() * 1.6f + 0.6f, r.nextFloat() * 6.28f) }
-    }
     Canvas(modifier.fillMaxSize()) {
         drawRect(Brush.verticalGradient(listOf(C.BgMid, C.Bg, C.BgLow)))
         val w = size.width; val h = size.height
@@ -181,10 +176,6 @@ fun SpaceBackground(modifier: Modifier = Modifier) {
         drawCircle(Brush.radialGradient(listOf(Color(0x332563EB), Color.Transparent),
             center = Offset(w * 0.1f, h * 0.9f), radius = w * 0.8f),
             radius = w * 0.8f, center = Offset(w * 0.1f, h * 0.9f))
-        for ((p, r, ph) in stars) {
-            val a = 0.25f + 0.35f * (0.5f + 0.5f * sin(phase * 3f + ph))
-            drawCircle(Color.White.copy(alpha = a), radius = r, center = Offset(p.x * w, p.y * h))
-        }
     }
 }
 

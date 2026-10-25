@@ -42,7 +42,7 @@
 אם המדיניות תשתנה (למשל אם יתווסף שירות בענן), נעדכן את המסמך ואת התאריך, ונבקש את הסכמתך לפני שמידע כלשהו יישלח מהטלפון.  
   
 10. יצירת קשר  
-[כתובת מייל ליצירת קשר — יושלם לפני פרסום]  
+israel0546631352@gmail.com  
 
 </div>
 
@@ -63,4 +63,4 @@ Last updated: October 24, 2026
 7. **Children:** no personal data is collected from anyone, including children.
 8. **Your rights:** we hold no data about you, so there is nothing for us to provide, correct or delete. Everything stays on your phone under your control.
 9. **Changes:** if this policy changes (for example, if a cloud feature is added), we will update this page and ask for consent before any data leaves the phone.
-10. **Contact:** [contact e-mail, to be added before publishing]
+10. **Contact:** israel0546631352@gmail.com

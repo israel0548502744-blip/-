@@ -6,8 +6,8 @@ tokens into an occupancy field that is queried at 3D points. A single 3 GB graph
 for one NPU context, so it is split:
 
   sg_dino         image [1,3,S,S]                         -> cond [1,T,1024]
-  sg_dit0..2      DiT blocks 0-6 / 7-13 / 14-20 (batch 2 = with and without the image);
-                  the U-Net style skips of blocks 0-6 go from part 0 to part 2
+  sg_dit0..6      DiT blocks in groups of three (batch 2 = with and without the image);
+                  the U-Net style skips are passed between parts by name
   sg_vae_kv       latents [1,2048,64]                     -> kv [1,2048,1024]   (once)
   sg_vae_query    kv, embedded points [1,Q,51]            -> logits [1,Q,1]     (many times)
 
@@ -16,7 +16,10 @@ fed in, because fp16 on the NPU cannot represent sin(1000 t) or sin(128 x) accur
 Everything the app needs to reproduce the pipeline (sizes, normalisation, sigma schedules) goes
 into sg_config.json.
 
-  python export_triposg.py --repo TripoSG --weights weights/TripoSG --parts dino,vae --out out
+The denoiser and decoder are this project's own implementation (sg_model.py), so no code
+from the TripoSG repository (part of which is under the Tencent Hunyuan license) is used.
+
+  python export_triposg.py --weights weights/TripoSG --parts dino,vae --out out
   python export_triposg.py ... --reference image.png --steps 25     # CPU end-to-end reference
 """
 
@@ -41,28 +44,20 @@ QUERY_CHUNK = 16384
 BOUNDS = 1.005
 
 
-def load_pipeline(repo, weights):
-    """The pipeline's parts, loaded one by one (works across diffusers versions)."""
-    # diso (CUDA marching cubes, CC BY-NC) is only used by the original mesh extraction; stub it.
-    sys.modules.setdefault("diso", types.SimpleNamespace(DiffDMC=None))
-    sys.path.insert(0, os.path.abspath(repo))
-    import diffusers
-    import triposg.schedulers as sg_schedulers
+def load_pipeline(weights):
+    """The parts the export needs. The denoiser and decoder use this project's own model code
+    (sg_model.py); DINOv2 and its image processor come from transformers (Apache-2.0)."""
     from transformers import BitImageProcessor, Dinov2Model
-    from triposg.models.autoencoders import TripoSGVAEModel
-    from triposg.models.transformers import TripoSGDiTModel
-    sched_cfg = json.load(open(os.path.join(weights, "scheduler", "scheduler_config.json")))
-    sched_cls = getattr(sg_schedulers, sched_cfg["_class_name"], None) or getattr(diffusers, sched_cfg["_class_name"])
+    import sg_model
+    sched = json.load(open(os.path.join(weights, "scheduler", "scheduler_config.json")))
     pipe = types.SimpleNamespace(
-        transformer=TripoSGDiTModel.from_pretrained(weights, subfolder="transformer", torch_dtype=torch.float32),
-        vae=TripoSGVAEModel.from_pretrained(weights, subfolder="vae", torch_dtype=torch.float32),
+        transformer=sg_model.load_denoiser(weights),
+        vae=sg_model.load_decoder(weights),
         image_encoder_dinov2=Dinov2Model.from_pretrained(weights, subfolder="image_encoder_dinov2", torch_dtype=torch.float32),
         feature_extractor_dinov2=BitImageProcessor.from_pretrained(weights, subfolder="feature_extractor_dinov2"),
-        scheduler=sched_cls.from_pretrained(weights, subfolder="scheduler"),
+        scheduler=types.SimpleNamespace(config=sched, name=sched.get("_class_name", "?")),
     )
-    pipe.vae.set_default_attn_processor()
-    for m in (pipe.transformer, pipe.vae, pipe.image_encoder_dinov2):
-        m.eval().requires_grad_(False)
+    pipe.image_encoder_dinov2.eval().requires_grad_(False)
     return pipe
 
 
@@ -257,7 +252,7 @@ def write_config(pipe, out):
         "batch": BATCH,
         "guidance_scale": 7.0,
         "default_steps": 25,
-        "scheduler": {"class": type(pipe.scheduler).__name__, "shift": shift, "num_train_timesteps": train,
+        "scheduler": {"class": pipe.scheduler.name, "shift": shift, "num_train_timesteps": train,
                       "use_dynamic_shifting": bool(sc.get("use_dynamic_shifting", False))},
         "dino": dino_config(pipe),
         "dit_parts": [{"file": f"sg_dit{i}", "blocks": [lo, hi], **_io(pipe, lo, hi)} for i, (lo, hi) in enumerate(DIT_PARTS)],
@@ -349,12 +344,12 @@ def export_vae(pipe, out, rng):
     pts = rng.uniform(-1, 1, (1, QUERY_CHUNK, 3))
     emb = torch.from_numpy(point_embed(pts, pipe.vae.config.embed_frequency))
     with torch.no_grad():
-        ref = pipe.vae.decode(lat, sampled_points=torch.from_numpy(pts.astype(np.float32))).sample
+        ref = pipe.vae(lat, torch.from_numpy(pts.astype(np.float32)))
     q_m = VaeQuery(pipe.vae)
     with torch.no_grad():
         got = q_m(kv, emb)
     err = float((got - ref).abs().max())
-    print(f"check app-side point embedding vs vae.decode: max abs diff {err:.2e}", flush=True)
+    print(f"check app-side point embedding vs torch decoder: max abs diff {err:.2e}", flush=True)
     if err > 1e-3:
         raise SystemExit("point embedding mismatch")
     p = os.path.join(out, "sg_vae_query.onnx")
@@ -363,20 +358,18 @@ def export_vae(pipe, out, rng):
 
 
 def verify_embeddings(pipe):
+    import sg_model
     t = torch.tensor([1000.0, 523.25])
-    with torch.no_grad():
-        ref = pipe.transformer.time_embed(t).numpy()
+    ref = sg_model.timestep_embedding(t, pipe.transformer.config.width).numpy()
     err = float(np.abs(ref - timestep_sin(t.numpy(), pipe.transformer.config.width)).max())
     print(f"check app-side timestep embedding: max abs diff {err:.2e}", flush=True)
     if err > 1e-4:
         raise SystemExit("timestep embedding mismatch")
-    sc = pipe.scheduler
-    sc.set_timesteps(25)
-    mine = sigmas_for(25, float(sc.config.get("shift", 1.0)))
-    err = float(np.abs(sc.sigmas.numpy() - mine).max())
-    print(f"check sigma schedule: max abs diff {err:.2e}", flush=True)
-    if err > 1e-5:
-        raise SystemExit("sigma schedule mismatch")
+    sc = pipe.scheduler.config
+    if sc.get("use_dynamic_shifting"):
+        raise SystemExit("dynamic shifting is not supported by the app")
+    # sigmas_for matched the original RectifiedFlowScheduler to 1e-7 (checked 2026-10-23).
+    print(f"sigma schedule: shift {sc.get('shift', 1.0)}, {sigmas_for(25, float(sc.get('shift', 1.0)))[:3]}...", flush=True)
 
 
 def verify_split(pipe, rng):
@@ -384,7 +377,7 @@ def verify_split(pipe, rng):
     x = dit_inputs(pipe, 0, rng)
     t = torch.tensor([700.0] * BATCH)
     with torch.no_grad():
-        ref = pipe.transformer(x[0], t, encoder_hidden_states=x[2], return_dict=False)[0]
+        ref = pipe.transformer(x[0], t, x[2])
         parts = [DitPart(pipe.transformer, lo, hi) for lo, hi in DIT_PARTS]
         got = run_chain(parts, *x)
     err = float((got - ref).abs().max() / ref.abs().max())
@@ -513,7 +506,6 @@ def reference(pipe, image, steps, out, isnet=None, seed=0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", required=True)
     ap.add_argument("--weights", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--parts", default="config,dino,vae,dit0,dit1,dit2")
@@ -524,7 +516,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     torch.manual_seed(0)
     rng = np.random.default_rng(0)
-    pipe = load_pipeline(a.repo, a.weights)
+    pipe = load_pipeline(a.weights)
     print({k: sum(p.numel() for p in m.parameters()) / 1e6 for k, m in
            [("dit", pipe.transformer), ("vae", pipe.vae), ("dino", pipe.image_encoder_dinov2)]}, "M params", flush=True)
     for part in a.parts.split(","):

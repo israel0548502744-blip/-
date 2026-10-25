@@ -2,8 +2,9 @@ name: TripoSG for the NPU (experiment)
 
 # Converts TripoSG (VAST-AI, MIT weights) into NPU graphs for the Snapdragon 8 Elite:
 # export to ONNX in parts, check every part against PyTorch, compile each part into a QNN
-# context binary, and publish the pack to the "triposg-v1" release. A separate job runs the
-# whole pipeline on the CPU the way the app will (own scheduler loop, coarse-to-fine extraction)
+# context binary, and publish the pack to the $PACK_TAG release. The model code is this
+# project's own (convert/sg_model.py): nothing from the TripoSG repository is downloaded or run.
+# A separate job runs the whole pipeline on the CPU the way the app will (own scheduler loop, coarse-to-fine extraction)
 # and publishes the reference mesh, so the phone's result can be compared with it.
 on:
   workflow_dispatch:
@@ -13,13 +14,15 @@ on:
         default: "25"
   push:
     branches: ["**"]
-    paths: ["convert/export_triposg.py", ".github/workflows/build-triposg.yml"]
+    paths: ["convert/export_triposg.py", "convert/sg_model.py", ".github/workflows/build-triposg.yml"]
 
 permissions:
   contents: write
 
 env:
-  TRIPOSG_COMMIT: fc5c40990181e2a756c4e0b1c2f4d6b5202faf8c
+  # v2: exported with the project's own model code. v1 (original repository code) stays
+  # published until the app switches over.
+  PACK_TAG: triposg-v2
 
 jobs:
   convert:
@@ -42,18 +45,14 @@ jobs:
       - name: Install
         run: |
           pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install "numpy<2" onnx onnxruntime diffusers==0.31.0 transformers==4.46.3 einops scikit-image \
-            jaxtyping typeguard trimesh huggingface_hub safetensors omegaconf
-      - name: Fetch TripoSG code and weights
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 huggingface_hub safetensors
+      - name: Fetch TripoSG weights (MIT)
         run: |
-          git clone https://github.com/VAST-AI-Research/TripoSG /mnt/w/TripoSG
-          git -C /mnt/w/TripoSG checkout $TRIPOSG_COMMIT
-          head -5 /mnt/w/TripoSG/LICENSE
           python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
           du -sh /mnt/w/weights/*
           cat /mnt/w/weights/model_index.json /mnt/w/weights/scheduler/*.json /mnt/w/weights/feature_extractor_dinov2/*.json
       - name: Export and check against PyTorch
-        run: /usr/bin/time -v python convert/export_triposg.py --repo /mnt/w/TripoSG --weights /mnt/w/weights --out /mnt/w/onnx --parts "${{ matrix.parts }}" 2>&1 | grep -v "^\s*\(Page\|Voluntary\|Involuntary\|Swaps\|File system\|Socket\|Signals\|Average\|Exit\|Minor\|Major\|Percent\|System time\|User time\)"
+        run: /usr/bin/time -v python convert/export_triposg.py --weights /mnt/w/weights --out /mnt/w/onnx --parts "${{ matrix.parts }}" 2>&1 | grep -v "^\s*\(Page\|Voluntary\|Involuntary\|Swaps\|File system\|Socket\|Signals\|Average\|Exit\|Minor\|Major\|Percent\|System time\|User time\)"
       - name: Compile for the NPU (Snapdragon 8 Elite, SM8750)
         run: |
           pip install onnxruntime-qnn==2.7.0
@@ -69,10 +68,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view triposg-v1 >/dev/null 2>&1 || gh release create triposg-v1 --prerelease --latest=false \
+          gh release view $PACK_TAG >/dev/null 2>&1 || gh release create $PACK_TAG --prerelease --latest=false \
             --title "TripoSG NPU pack (experiment)" \
             --notes "TripoSG (VAST-AI-Research, MIT) converted for the Snapdragon 8 Elite NPU. Experimental."
-          gh release upload triposg-v1 /mnt/w/npu/* --clobber
+          gh release upload $PACK_TAG /mnt/w/npu/* --clobber
 
   reference:
     runs-on: ubuntu-latest
@@ -90,23 +89,23 @@ jobs:
       - name: Install
         run: |
           pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install "numpy<2" onnx onnxruntime diffusers==0.31.0 transformers==4.46.3 einops scikit-image \
-            jaxtyping typeguard trimesh huggingface_hub safetensors scipy omegaconf
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 scikit-image trimesh huggingface_hub \
+            safetensors scipy pillow
       - name: Fetch
         run: |
-          git clone https://github.com/VAST-AI-Research/TripoSG /mnt/w/TripoSG
-          git -C /mnt/w/TripoSG checkout $TRIPOSG_COMMIT
+          # One example picture from the TripoSG repository (MIT), not its code.
+          curl -fsSL -o /mnt/w/example.png https://raw.githubusercontent.com/VAST-AI-Research/TripoSG/fc5c40990181e2a756c4e0b1c2f4d6b5202faf8c/assets/example_data/hjswed.png
           python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
           curl -fsSL -o /mnt/w/isnet.onnx https://github.com/${GITHUB_REPOSITORY}/releases/download/extras-v1/isnet_general.onnx
       - name: CPU reference (app algorithm)
         run: |
-          python convert/export_triposg.py --repo /mnt/w/TripoSG --weights /mnt/w/weights --out ref --parts "" \
-            --reference /mnt/w/TripoSG/assets/example_data/hjswed.png --isnet /mnt/w/isnet.onnx --steps ${{ inputs.reference_steps }}
+          python convert/export_triposg.py --weights /mnt/w/weights --out ref --parts "" \
+            --reference /mnt/w/example.png --isnet /mnt/w/isnet.onnx --steps ${{ inputs.reference_steps }}
           ls -la ref
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view triposg-v1 >/dev/null 2>&1 || gh release create triposg-v1 --prerelease --latest=false \
+          gh release view $PACK_TAG >/dev/null 2>&1 || gh release create $PACK_TAG --prerelease --latest=false \
             --title "TripoSG NPU pack (experiment)" --notes "Experimental."
-          cd ref && for f in *; do cp "$f" "ref_$f"; done && gh release upload triposg-v1 ref_* --clobber
+          cd ref && for f in *; do cp "$f" "ref_$f"; done && gh release upload $PACK_TAG ref_* --clobber

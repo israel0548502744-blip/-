@@ -1,0 +1,17 @@
+Privacy policy
+
+
+Last updated: October 24, 2026
+
+In short: your photos never leave your phone. All processing happens on the device. We run no server that receives your images, models or details.
+
+1. Images and text you pick, capture or type are processed only on the phone and are never sent to us or to third parties.
+2. Models and creations are stored in the app's private folder on the phone and are deleted when you delete them or uninstall the app.
+3. Internet use is limited to downloading the AI models and app updates from GitHub (a Microsoft service). GitHub receives the phone's IP address and basic technical details, as with any website. No personal data, images or content are sent.
+4. Crash and diagnostic logs (steps, errors, device model, Android version, free memory) are kept on the phone only. They leave the device only if you copy and send them yourself, and you can delete them at any time (Settings → Reports → Clear).
+5. Permissions: the app has no camera permission of its own (it opens the system camera and receives only the photo you took); photo picker for the image you choose; notifications and a foreground service so generation continues in the background; internet for downloads only.
+6. No ads, no tracking, no analytics, no accounts, and no sale or sharing of data.
+7. Children: no personal data is collected from anyone, including children.
+8. Your rights: we hold no data about you, so there is nothing for us to provide, correct or delete. Everything stays on your phone under your control.
+9. Changes: if this policy changes (for example, if a cloud feature is added), we will update this page and ask for consent before any data leaves the phone.
+10. Contact: israel0546631352@gmail.com
