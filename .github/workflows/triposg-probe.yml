@@ -5,6 +5,8 @@ name: TripoSG NPU memory probe
 # which size fits: fewer blocks, batch 1 (guidance branches run one after the other), fp16 weights.
 on:
   workflow_dispatch:
+  push:
+    paths: [".github/workflows/triposg-probe.yml"]
 
 permissions:
   contents: write
