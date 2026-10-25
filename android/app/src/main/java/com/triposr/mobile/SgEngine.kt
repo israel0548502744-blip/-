@@ -35,6 +35,10 @@ class SgEngine(private val context: Context) : AutoCloseable {
         /** Probe variants (batch x blocks, h = fp16 weights), see triposg-probe.yml. */
         val PROBES = listOf("b1x1", "b2x1", "b1x3", "b1x3h")
         const val COARSE = 64
+        /** RAM that must stay free after loading a part (below this Android may kill the app). */
+        const val MIN_FREE_MB = 1300
+        /** A part is only kept loaded across steps while this much RAM stays free. */
+        const val KEEP_FREE_MB = 2600
         const val LEVELS = 2
 
         fun files(chip: String) = listOf(CONFIG) + GRAPHS.flatMap { listOf("${it}_${chip}_ctx.onnx", "${it}_${chip}_ctx_qnn.bin") }
@@ -82,6 +86,10 @@ class SgEngine(private val context: Context) : AutoCloseable {
     private val chip = NpuPack.chip() ?: throw IllegalStateException("TripoSG צריך מעבד Snapdragon 8 Elite")
     val config = Config(JSONObject(ModelStore.file(context, CONFIG).readText()))
 
+    private val activity = context.getSystemService(android.app.ActivityManager::class.java)
+    private fun freeMb() = android.app.ActivityManager.MemoryInfo().also { activity.getMemoryInfo(it) }.availMem shr 20
+    private fun partMb(graph: String) = ModelStore.file(context, "${graph}_${chip}_ctx_qnn.bin").length() shr 20
+
     private fun open(graph: String): OrtSession {
         val f = ModelStore.file(context, "${graph}_${chip}_ctx.onnx")
         if (!f.exists()) throw IllegalStateException("חבילת TripoSG לא הורדה (${f.name})")
@@ -108,6 +116,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
         try {
             for (g in GRAPHS) {
                 val size = ModelStore.file(context, "${g}_${chip}_ctx_qnn.bin").length() shr 20
+                if (freeMb() - size < MIN_FREE_MB) { line("$g ($size MB): not tried, only ${freeMb()} MB RAM free"); break }
                 val r = runCatching { open(g) }
                 r.onSuccess { open += it; line("$g ($size MB): OK, ${open.size} open, free ${freeMb()} MB") }
                 r.onFailure { line("$g ($size MB): FAILED with ${open.size} open: ${it.message?.take(160)}") }
@@ -299,14 +308,27 @@ class SgEngine(private val context: Context) : AutoCloseable {
         /** The session for part i and whether it must be closed after use. */
         fun session(i: Int): Pair<OrtSession, Boolean> {
             cached[i]?.let { return it to false }
+            val need = partMb("sg_dit$i")
+            // Each loaded part also takes its size in RAM, and Android kills the app when free
+            // memory runs low: drop kept parts until this one fits with a margin.
+            while (freeMb() - need < MIN_FREE_MB && cached.any { it != null }) {
+                val j = cached.indexOfLast { it != null }
+                cached[j]!!.close(); cached[j] = null
+                budget = minOf(budget, cached.count { it != null } + 1)
+                CrashLog.log("TripoSG: RAM low (${freeMb()} MB free), unloaded part $j, keeping ${budget - 1}")
+            }
             while (true) {
                 val open = cached.count { it != null }
+                val roomy = freeMb() - need >= KEEP_FREE_MB
                 try {
                     val s = open("sg_dit$i")
                     // Keep it if there is room, leaving one slot for the parts loaded per step.
-                    return if (open < budget - 1 || (budget == DIT_PARTS && open < budget)) {
-                        cached[i] = s; s to false
-                    } else s to true
+                    val keep = roomy && (open < budget - 1 || (budget == DIT_PARTS && open < budget))
+                    if (!keep && budget > open + 1) {
+                        budget = open + 1
+                        CrashLog.log("TripoSG: keeping $open parts loaded (${freeMb()} MB RAM free), the rest per step")
+                    }
+                    return if (keep) { cached[i] = s; s to false } else s to true
                 } catch (e: Throwable) {
                     if (open == 0) throw e
                     budget = open
