@@ -87,6 +87,38 @@ class SgEngine(private val context: Context) : AutoCloseable {
         }
     }
 
+    /**
+     * Diagnostic: opens the NPU graphs one after another and keeps them open, to find how many
+     * fit at once, then retries a failed one alone. Each line goes to the report.
+     */
+    fun loadTest(): String {
+        val am = context.getSystemService(android.app.ActivityManager::class.java)
+        fun freeMb() = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem shr 20
+        val lines = ArrayList<String>()
+        fun line(t: String) { lines += t; CrashLog.log("TripoSG load test: $t") }
+        line("free RAM ${freeMb()} MB")
+        val open = ArrayList<OrtSession>()
+        var failed: String? = null
+        try {
+            for (g in GRAPHS) {
+                val size = ModelStore.file(context, "${g}_${chip}_ctx_qnn.bin").length() shr 20
+                val r = runCatching { open(g) }
+                r.onSuccess { open += it; line("$g ($size MB): OK, ${open.size} open, free ${freeMb()} MB") }
+                r.onFailure { line("$g ($size MB): FAILED with ${open.size} open: ${it.message?.take(160)}") }
+                if (r.isFailure) { failed = g; break }
+            }
+        } finally {
+            open.forEach { it.close() }
+        }
+        failed?.let { g ->
+            line("free after closing ${freeMb()} MB")
+            runCatching { open(g).close() }
+                .onSuccess { line("$g alone: OK") }
+                .onFailure { line("$g alone: FAILED: ${it.message?.take(160)}") }
+        }
+        return lines.joinToString("\n")
+    }
+
     private fun tensor(data: FloatArray, vararg shape: Long) = OnnxTensor.createTensor(env, FloatBuffer.wrap(data), shape)
 
     private fun OrtSession.Result.floats(i: Int = 0): FloatArray =

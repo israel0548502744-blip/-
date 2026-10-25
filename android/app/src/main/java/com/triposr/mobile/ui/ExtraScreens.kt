@@ -69,7 +69,9 @@ import com.triposr.mobile.Extras
 import com.triposr.mobile.Generator
 import com.triposr.mobile.ModelStore
 import com.triposr.mobile.Settings
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Lithophane, relief and QR plates: printable products that don't depend on 3D reconstruction. */
 @Composable
@@ -268,6 +270,8 @@ fun ModelPacksSection() {
     var size by remember { mutableStateOf<Long?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
     var importing by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { size = runCatching { ModelStore.availableSize(pack) }.getOrNull() }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree == null) return@rememberLauncherForActivityResult
@@ -296,11 +300,23 @@ fun ModelPacksSection() {
                 }
             }
             when (status) {
-                ModelStore.Status.Ready ->
+                ModelStore.Status.Ready -> {
+                    SoftButton(if (testing) "בודק טעינה…" else "בדיקת טעינה ל-NPU", Modifier.fillMaxWidth(), enabled = !testing) {
+                        testing = true
+                        scope.launch {
+                            testResult = withContext(Dispatchers.Default) {
+                                runCatching { com.triposr.mobile.SgEngine(ctx).use { it.loadTest() } }
+                                    .getOrElse { "הבדיקה נכשלה: ${it.message}" }
+                            }
+                            testing = false
+                        }
+                    }
+                    testResult?.let { Text(it + "\n(נשמר גם בדוח המלא)", color = C.Sub, fontSize = 11.sp) }
                     SoftButton("מחק · ${ModelStore.sizeOnDisk(ctx, pack) shr 20} MB", Modifier.fillMaxWidth(), Icons.Rounded.Delete, color = C.Red) {
                         if (Settings.generator(ctx) == Generator.TRIPOSG) Settings.setGenerator(ctx, Generator.TRIPOSR)
                         ModelStore.delete(ctx, pack)
                     }
+                }
                 is ModelStore.Status.Downloading -> {
                     GlowBar(status.done.toFloat() / status.total, Modifier.fillMaxWidth(), C.Primary)
                     SoftButton("בטל", Modifier.fillMaxWidth()) { ModelStore.cancel(ctx, pack) }
