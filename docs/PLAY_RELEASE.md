@@ -9,12 +9,14 @@ Status 2026-10-24. Items marked ✅ are done in the app; the rest need the owner
 - ✅ Public pages generated into `docs/` (`python convert/legal_pages.py`): index, terms, privacy
   (Hebrew + English). ☐ Owner turns on GitHub Pages once: repository Settings → Pages → Build and
   deployment → "Deploy from a branch" → branch `ccr-755aee2e-0wbwnj`, folder `/docs` → Save.
-  The privacy URL is then `https://israel0548502744-blip.github.io/Makeo3D/privacy.html`.
+  The privacy URL is then `https://israel0548502744-blip.github.io/makeo3d-public/privacy.html`.
 - ☐ Lawyer review: `docs/LAWYER_BRIEF.md` is the message to send.
 
 ## App changes needed for the Play build
 - ☐ **New name and package id.** `com.triposr.mobile` → the new name. A package id can never change after the first upload.
 - ☐ **Remove the self-updater from the Play build.** Play forbids apps that download and install their own APKs, and `REQUEST_INSTALL_PACKAGES` is a restricted permission. Plan: two build flavors. `github` (today's test build, keeps the updater) and `play` (no updater, no install permission; it uses Google's In-App Updates library instead, which shows "update available" and installs through Play, which is allowed).
+- ☐ **Repositories.** Code: `Makeo3D` (private). Public files: `makeo3d-public` (model releases, app builds, `config.json`, legal pages on GitHub Pages). New model releases are built here and copied over with makeo3d-public's "Copy a release" workflow. App builds go there directly once the secret `PUBLIC_REPO_TOKEN` (fine-grained token, makeo3d-public only, Contents: read and write) is set.
+- ☐ **Retire the free GitHub builds at store launch:** set `min_build` in makeo3d-public/config.json to the first store build and `url` to the store page. Every older build then shows "צריך לעדכן" and stops. Also delete the old `apk-*` releases there.
 - ☐ **Signing keys (most important, never lose them).** The repository is public and the test keystore `android/keystore/triposr.jks` (password in `build.gradle.kts`) is readable by anyone, so it must never sign a store release. Plan:
   1. Enroll in **Play App Signing**: Google keeps the real app-signing key in its vault, so it can't be lost.
   2. We create a separate **upload key** (one command, `keytool`), never committed. Copies: the owner's password manager + Google Drive + an offline USB stick; CI gets it as an encrypted GitHub secret.

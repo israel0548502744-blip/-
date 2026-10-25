@@ -37,7 +37,7 @@ jobs:
         run: |
           mkdir -p models
           for f in triposr_encoder.onnx triposr_decoder.onnx; do
-            curl -fsSL -o models/$f https://github.com/${GITHUB_REPOSITORY}/releases/download/models-v1/$f
+            curl -fsSL -o models/$f https://github.com/israel0548502744-blip/makeo3d-public/releases/download/models-v1/$f
           done
           ls -la models
 

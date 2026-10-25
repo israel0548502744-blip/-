@@ -37,7 +37,7 @@
 חותכני עוגיות וחותמות מיועדים למגע עם מזון. בתנאים יש אזהרה על חומר ההדפסה ועל ניקוי. האם זה מספיק?
 
 המסמכים:
-- תנאי שימוש: https://israel0548502744-blip.github.io/Makeo3D/terms.html
-- מדיניות פרטיות: https://israel0548502744-blip.github.io/Makeo3D/privacy.html
+- תנאי שימוש: https://israel0548502744-blip.github.io/makeo3d-public/terms.html
+- מדיניות פרטיות: https://israel0548502744-blip.github.io/makeo3d-public/privacy.html
 
 תודה רבה!

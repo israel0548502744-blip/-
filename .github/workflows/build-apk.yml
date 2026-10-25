@@ -14,6 +14,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Token that may write releases to the public repository (the code repository is private,
+      # so the app reads its updates from there).
+      PUBLIC_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -53,3 +57,17 @@ jobs:
             Install Makeo3D.apk on the phone (allow installing from unknown sources).
             The AI model (~1.7 GB) is downloaded once from inside the app.
             Built from ${{ github.ref_name }} @ ${{ github.sha }}.
+
+      - name: Publish to the public repository (where the app looks for updates)
+        if: env.PUBLIC_TOKEN != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: israel0548502744-blip/makeo3d-public
+          token: ${{ env.PUBLIC_TOKEN }}
+          tag_name: apk-${{ github.run_number }}
+          name: Makeo 3D build ${{ github.run_number }}
+          make_latest: true
+          files: Makeo3D.apk
+          body: |
+            Install Makeo3D.apk on the phone (allow installing from unknown sources).
+            The AI models are downloaded from inside the app.

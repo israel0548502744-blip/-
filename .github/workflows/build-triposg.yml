@@ -96,7 +96,7 @@ jobs:
           # One example picture from the TripoSG repository (MIT), not its code.
           curl -fsSL -o /mnt/w/example.png https://raw.githubusercontent.com/VAST-AI-Research/TripoSG/fc5c40990181e2a756c4e0b1c2f4d6b5202faf8c/assets/example_data/hjswed.png
           python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
-          curl -fsSL -o /mnt/w/isnet.onnx https://github.com/${GITHUB_REPOSITORY}/releases/download/extras-v1/isnet_general.onnx
+          curl -fsSL -o /mnt/w/isnet.onnx https://github.com/israel0548502744-blip/makeo3d-public/releases/download/extras-v1/isnet_general.onnx
       - name: CPU reference (app algorithm)
         run: |
           python convert/export_triposg.py --weights /mnt/w/weights --out ref --parts "" \

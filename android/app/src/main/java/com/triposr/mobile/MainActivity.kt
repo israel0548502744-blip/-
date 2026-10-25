@@ -94,8 +94,12 @@ class MainActivity : ComponentActivity() {
         }
         val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+        var retired by remember { mutableStateOf<RemoteConfig.Retired?>(null) }
         LaunchedEffect(Unit) {
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            // No network means no answer: the app keeps working offline.
+            retired = runCatching { RemoteConfig.retired() }
+                .onFailure { CrashLog.log("Remote config failed: ${it.message}") }.getOrNull()
             AppState.update = runCatching { withContext(Dispatchers.IO) { Updater.check() } }
                 .onFailure {
                     CrashLog.log("Update check failed: ${it.message}")
@@ -146,6 +150,7 @@ class MainActivity : ComponentActivity() {
             }
             CreateMenu()
             if (!termsOk && screen != Screen.Legal) TermsDialog { Settings.acceptTerms(ctx); termsOk = true }
+            retired?.let { com.triposr.mobile.ui.RetiredScreen(it) }
         }
     }
 }

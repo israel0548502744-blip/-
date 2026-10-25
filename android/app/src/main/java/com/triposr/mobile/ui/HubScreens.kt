@@ -325,5 +325,22 @@ fun TermsDialog(onAccept: () -> Unit) {
     )
 }
 
+/** Shown over everything when the public config switched this build off; it cannot be dismissed. */
+@Composable
+fun RetiredScreen(r: com.triposr.mobile.RemoteConfig.Retired) {
+    val ctx = LocalContext.current
+    AlertDialog(
+        onDismissRequest = {}, containerColor = C.CardHigh,
+        icon = { Icon(Icons.Rounded.Bolt, null, tint = C.Violet) },
+        title = { Text("צריך לעדכן", color = C.Text, fontWeight = FontWeight.Bold) },
+        text = { Text(r.message, color = C.Sub, fontSize = 14.sp) },
+        confirmButton = {
+            if (r.url.isNotBlank()) TextButton({
+                runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(r.url))) }
+            }) { Text("להתקנה", color = C.Violet, fontWeight = FontWeight.Bold) }
+        },
+    )
+}
+
 /** True when this screen shows the bottom navigation bar. */
 val Screen.isRoot: Boolean get() = this in listOf(Screen.Home, Screen.Projects, Screen.Models, Screen.Settings)

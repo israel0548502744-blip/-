@@ -12,7 +12,8 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val REPO = "israel0548502744-blip/-"
+/** Public repository with only what the app downloads (models, updates, config); the code is private. */
+private const val REPO = "israel0548502744-blip/makeo3d-public"
 
 private suspend fun githubJson(path: String): JSONObject = withContext(Dispatchers.IO) {
     val conn = URL("https://api.github.com/repos/$REPO/$path").openConnection() as HttpURLConnection
@@ -307,6 +308,29 @@ object NpuPack {
     fun encoder(ctx: Context): File? = chip()?.let { ModelStore.file(ctx, "triposr_encoder_${it}_ctx.onnx") }
     fun decoder(ctx: Context): File? = chip()?.let { ModelStore.file(ctx, "triposr_decoder_${it}_ctx.onnx") }
     fun isReady(ctx: Context) = ModelStore.isReady(ctx, ModelStore.NPU)
+}
+
+/**
+ * Settings the app reads from the public repository on launch. min_build lets builds that are
+ * no longer supported (e.g. the free test builds once the app is in the store) be switched off.
+ */
+object RemoteConfig {
+    data class Retired(val message: String, val url: String)
+
+    suspend fun retired(): Retired? = withContext(Dispatchers.IO) {
+        val conn = URL("https://raw.githubusercontent.com/$REPO/main/config.json").openConnection() as HttpURLConnection
+        conn.connectTimeout = 15000
+        conn.readTimeout = 15000
+        val json = try {
+            if (conn.responseCode != 200) throw IllegalStateException("config ${conn.responseCode}")
+            JSONObject(conn.inputStream.bufferedReader().readText())
+        } finally {
+            conn.disconnect()
+        }
+        if (BuildConfig.VERSION_CODE >= json.optInt("min_build", 0)) null
+        else Retired(json.optString("message").ifBlank { "הגרסה הזו כבר לא נתמכת. כדי להמשיך, יש להתקין את הגרסה העדכנית." },
+            json.optString("url"))
+    }
 }
 
 /** Checks the repo's latest GitHub release for a newer APK and installs it. */
