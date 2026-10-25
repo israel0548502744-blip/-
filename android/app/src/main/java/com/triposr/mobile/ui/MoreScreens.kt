@@ -136,7 +136,10 @@ fun ResultScreen() {
         runCatching {
             withContext(Dispatchers.Default) {
                 val t0 = System.nanoTime()
-                Printability.prepared(mesh, baseCut).also {
+                // Very dense meshes (TripoSG makes ~800k triangles) run the check out of Java heap.
+                val m = if (mesh.triangleCount > PRINT_CHECK_MAX_TRIANGLES)
+                    MeshTools.simplify(mesh, (1f - PRINT_CHECK_MAX_TRIANGLES.toFloat() / mesh.triangleCount).coerceAtMost(0.9f)) else mesh
+                Printability.prepared(m, baseCut).also {
                     CrashLog.log("Print check in %.2fs: watertight=${it.report.watertight} minWall=%.2fmm".format(
                         (System.nanoTime() - t0) / 1e9, it.report.minWallMm))
                 }
@@ -581,3 +584,5 @@ private fun ReportSection(title: String, text: String, color: Color) {
         }
     }
 }
+
+private const val PRINT_CHECK_MAX_TRIANGLES = 300_000
