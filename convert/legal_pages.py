@@ -66,7 +66,7 @@ def page(title, body):
     return f"""<!doctype html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(title)}</title><style>{STYLE}</style></head>
+<title>Makeo 3D · {html.escape(title)}</title><style>{STYLE}</style></head>
 <body><main>{nav}
 {body}
 </main></body></html>

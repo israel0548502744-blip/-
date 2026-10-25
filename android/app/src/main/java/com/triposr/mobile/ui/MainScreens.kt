@@ -196,7 +196,7 @@ fun HomeScreen() {
         Spacer(Modifier.height(18.dp))
         Logo(64)
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.enter(i++)) {
-            GradientText("TripoSR 3D", 36.sp)
+            GradientText("Makeo 3D", 36.sp)
             Spacer(Modifier.height(4.dp))
             Text("מתמונה אחת למודל תלת־ממד, ישירות בטלפון", color = C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center)
         }

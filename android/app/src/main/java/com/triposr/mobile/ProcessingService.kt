@@ -40,7 +40,7 @@ class ProcessingService : Service() {
                 val text = if (job.done) "המודל מוכן! לחץ לצפייה" else "שגיאה: ${job.error}"
                 nm.notify(ID_DONE, Notification.Builder(ctx, CHANNEL_DONE)
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle("TripoSR 3D")
+                    .setContentTitle("Makeo 3D")
                     .setContentText(text)
                     .setContentIntent(openApp(ctx, if (job.done) ACTION_RESULT else null))
                     .setAutoCancel(true)

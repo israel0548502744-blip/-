@@ -1,4 +1,4 @@
-name: Build TripoSR Android APK
+name: Build Makeo 3D Android APK
 
 # Builds the small app (~30-40 MB). The 1.7 GB model is NOT in the APK: it is published
 # once by build-models.yml and downloaded from inside the app.
@@ -33,23 +33,23 @@ jobs:
       - name: Build APK
         run: |
           gradle -p android assembleRelease --no-daemon
-          cp android/app/build/outputs/apk/release/app-release.apk TripoSR.apk
-          ls -la TripoSR.apk
+          cp android/app/build/outputs/apk/release/app-release.apk Makeo3D.apk
+          ls -la Makeo3D.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TripoSR-apk
-          path: TripoSR.apk
+          name: Makeo3D-apk
+          path: Makeo3D.apk
 
       - name: Publish as the latest release (the app's updater reads it)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ github.run_number }}
-          name: TripoSR Android build ${{ github.run_number }}
+          name: Makeo 3D build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
-          files: TripoSR.apk
+          files: Makeo3D.apk
           body: |
-            Install TripoSR.apk on the phone (allow installing from unknown sources).
+            Install Makeo3D.apk on the phone (allow installing from unknown sources).
             The AI model (~1.7 GB) is downloaded once from inside the app.
             Built from ${{ github.ref_name }} @ ${{ github.sha }}.

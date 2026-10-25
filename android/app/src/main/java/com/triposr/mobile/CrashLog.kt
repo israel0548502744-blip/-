@@ -105,7 +105,7 @@ object CrashLog {
     fun diagnostics(): String = buildReport("Diagnostics", null, recentLog().takeLast(150))
 
     fun buildReport(title: String, e: Throwable?, log: List<String>?): String = buildString {
-        appendLine("=== TripoSR 3D — $title ===")
+        appendLine("=== Makeo 3D — $title ===")
         appendLine("Time: ${stamp.format(Date())}")
         appendLine("App: ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})")

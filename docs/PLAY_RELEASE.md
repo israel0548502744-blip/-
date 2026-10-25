@@ -9,7 +9,7 @@ Status 2026-10-24. Items marked ✅ are done in the app; the rest need the owner
 - ✅ Public pages generated into `docs/` (`python convert/legal_pages.py`): index, terms, privacy
   (Hebrew + English). ☐ Owner turns on GitHub Pages once: repository Settings → Pages → Build and
   deployment → "Deploy from a branch" → branch `ccr-755aee2e-0wbwnj`, folder `/docs` → Save.
-  The privacy URL is then `https://israel0548502744-blip.github.io/-/privacy.html`.
+  The privacy URL is then `https://israel0548502744-blip.github.io/Tridio/privacy.html`.
 - ☐ Lawyer review: `docs/LAWYER_BRIEF.md` is the message to send.
 
 ## App changes needed for the Play build

@@ -326,7 +326,7 @@ object Updater {
     fun download(ctx: Context, u: Update): Long {
         ctx.getExternalFilesDir("updates")?.listFiles()?.forEach { it.delete() }
         val req = DownloadManager.Request(Uri.parse(u.url))
-            .setTitle("TripoSR — עדכון ${u.build}")
+            .setTitle("Makeo 3D — עדכון ${u.build}")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             .setDestinationInExternalFilesDir(ctx, "updates", apkFile(ctx, u).name)
         return ctx.getSystemService(DownloadManager::class.java).enqueue(req)

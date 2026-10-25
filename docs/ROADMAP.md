@@ -84,3 +84,9 @@ When the paid "Pro" in-app purchase is added (~6 months after launch), everyone 
 before that date gets Pro free for 3 months (owner's choice, 2026-10-25). Implementation: the first launch stores a signed
 "early user" flag locally and, for reinstalls, Play's purchase history of a free "early access"
 item claimed automatically during the free period (survives reinstall and new phones).
+
+**Chosen (owner, 2026-10-25): Makeo 3D.** Display name changed everywhere; the package id
+`com.triposr.mobile` changes only at the first Play upload (changing it now would install a
+second app and lose downloaded models and the gallery). Rejected after search: Tridio
+(tridio.net sells interactive 3D product photos), Snap2Print (Snap Inc. opposes "Snap" marks;
+SNAP2FINISH is registered for photo printing).

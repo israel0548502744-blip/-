@@ -3,6 +3,8 @@ Privacy policy
 
 Last updated: October 24, 2026
 
+This policy covers the Makeo 3D app.
+
 In short: your photos never leave your phone. All processing happens on the device. We run no server that receives your images, models or details.
 
 1. Images and text you pick, capture or type are processed only on the phone and are never sent to us or to third parties.
