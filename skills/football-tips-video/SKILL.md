@@ -15,7 +15,8 @@ The user makes these videos daily. He sends: football clips, match images (two l
 - **Slip image** pops in **when the voice starts the pick sentence** ("ההמלצה שלי", "אני הולך על", "נלך על"), with a **soft warm coin** sound (the bright ka-ching was too harsh), and **stays until the end of that sentence**. Show the full image as sent, **at ~80% of the screen width (not edge to edge — he said full-width is too big)**, framed with a green border + glow. **No logo on the slip.** Make that sentence its own `tip` beat. If the pick sentence also introduces the match ("ההמלצה שלי לקלאסיקו"), put `m` and `s` on the same tip beat; the slip then comes 0.35s after the card.
 - **WhatsApp line** ("אל תשכחו להיכנס לקבוצת הוואטסאפ...") gets a green card "קבוצת הוואטסאפ שלנו / הקישור בביו".
 - **Captions** (style learned from his reference edit, 25.10): Heebo ExtraBold 66px, white with a soft dark shadow (no thick outline), **in the middle of the screen** (top 930px) between the match card and the slip, **max 3 words per chunk, the whole chunk appears at once** (80ms fade), no jumping. Pick words green #38e07b (`hl`); a brand/name word can be cyan #3ec6ff (`hl2`, set per word in timeline). Slip sits lower (top 1110px) so it never covers captions.
-- **No zoom on clips. No repeated frames / backward jumps. No shaking**: each clip plays forward continuously; cut only between different clips or forward-only to skip a flash or a logo outro; stabilize with vidstab.
+- **NO ZOOM AT ALL on clips** (he hates it — "זום מגעיל"). This includes the hidden zoom from stabilization: vidstab `optzoom=1` without limits zoomed ~40% on panning shots. vidstab is capped (`maxshift=8:maxangle=0.004`, zoom ≤ ~3%, static). If any zoom is ever needed, only tiny and slow. After building, compare a frame of each shot with the same source frame to confirm the framing matches.
+- **No repeated frames / backward jumps**: each clip plays forward continuously; cut only between different clips or forward-only to skip a flash, a logo outro or a blurry close-up.
 - **Never use blurry/over-zoomed frames** (extreme close-ups where you can't tell what you're seeing): check the per-second contact sheet and skip those seconds.
 - Skip white flash frames and end-of-clip logo cards inside source clips (YAVG > 165; check the contact sheet for logo outros).
 - **Best quality always** (background footage quality is what keeps viewers): lanczos scaling, light unsharp on low-res sources, x264 slow CRF 12 for segments, CRF 15 final, AAC 320k. If his clips are low-res (WhatsApp-compressed), tell him once to send originals.
@@ -284,7 +285,7 @@ if not a.skipbase:
     stab=''
     if not a.nostab:
         run(['ffmpeg','-y','-ss',str(ss),'-t',ind,'-i',src,'-vf',f'vidstabdetect=shakiness=6:accuracy=12:result={tf}','-f','null','-'])
-        stab=f'vidstabtransform=input={tf}:smoothing=20:optzoom=1,'
+        stab=f'vidstabtransform=input={tf}:smoothing=20:maxshift=8:maxangle=0.004:optzoom=1,'   # capped: zoom never above ~3%
     # scale to cover 1080x1920 (works for any source aspect), best-quality settings
     # low-res sources (WhatsApp) get a light sharpen after upscaling
     h=int(subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=height','-of','csv=p=0',src],capture_output=True,text=True).stdout.strip() or 1920)
