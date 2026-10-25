@@ -9,22 +9,23 @@ The user makes these videos daily. He sends: football clips, match images (two l
 
 ## Fixed rules (never break)
 - Max length **40 seconds** (aim for 39.0s of voice + 0.7s tail).
-- Always open with **"אל תפספסו את זה!!"** (or the exact opening line he writes, e.g. "אל תפספסו!"): huge white text with black outline + green glow, punch-zoom in, **impact** sound (deep boom + shimmer).
+- Always open with **"אל תפספסו את זה!!"** (or the exact opening line he writes, e.g. "אל תפספסו!"): huge white text with black outline + green glow, punch-zoom in, **phonk hit** sound (distorted 808 drop + kick + clap + down-sweep). **No bells/chimes on the opening** — he wants it cool and hard, like phonk football edits.
 - **The first 2 seconds decide everything.** Frame 0 = the most energetic, sharp, colorful moment he sent (players jumping/celebrating, a goal hitting the net) — never a blurry close-up or a slow wide tactical shot. Cut to a second dynamic shot by ~1.2s (when the intro line starts).
-- **Match image** pops in center-top **the moment the voice says "X נגד Y"**, with a soft bubbly **pop** (he disliked the whoosh noise there). Stays ~1.6s minimum.
-- **Slip image** pops in **when the voice starts the pick sentence** ("ההמלצה שלי", "אני הולך על", "נלך על"), with a **ka-ching** sound, and **stays until the end of that sentence**. Show the full image as sent, **at ~80% of the screen width (not edge to edge — he said full-width is too big)**, framed with a green border + glow and the **יום המזל logo badge** on its top-left corner. Make that sentence its own `tip` beat. If the pick sentence also introduces the match ("ההמלצה שלי לקלאסיקו"), put `m` and `s` on the same tip beat; the slip then comes 0.35s after the card.
+- **Match image** pops in **just above the captions** (card bottom at 890px, so it sits mid-upper screen — not up at the top) **the moment the voice says "X נגד Y"**, with a soft bubbly **pop** (he disliked the whoosh noise there). Stays ~1.6s minimum.
+- **Slip image** pops in **when the voice starts the pick sentence** ("ההמלצה שלי", "אני הולך על", "נלך על"), with a **soft warm coin** sound (the bright ka-ching was too harsh), and **stays until the end of that sentence**. Show the full image as sent, **at ~80% of the screen width (not edge to edge — he said full-width is too big)**, framed with a green border + glow. **No logo on the slip.** Make that sentence its own `tip` beat. If the pick sentence also introduces the match ("ההמלצה שלי לקלאסיקו"), put `m` and `s` on the same tip beat; the slip then comes 0.35s after the card.
 - **WhatsApp line** ("אל תשכחו להיכנס לקבוצת הוואטסאפ...") gets a green card "קבוצת הוואטסאפ שלנו / הקישור בביו".
 - **Captions** (style learned from his reference edit, 25.10): Heebo ExtraBold 66px, white with a soft dark shadow (no thick outline), **in the middle of the screen** (top 930px) between the match card and the slip, **max 3 words per chunk, the whole chunk appears at once** (80ms fade), no jumping. Pick words green #38e07b (`hl`); a brand/name word can be cyan #3ec6ff (`hl2`, set per word in timeline). Slip sits lower (top 1110px) so it never covers captions.
 - **No zoom on clips. No repeated frames / backward jumps. No shaking**: each clip plays forward continuously; cut only between different clips or forward-only to skip a flash or a logo outro; stabilize with vidstab.
+- **Never use blurry/over-zoomed frames** (extreme close-ups where you can't tell what you're seeing): check the per-second contact sheet and skip those seconds.
 - Skip white flash frames and end-of-clip logo cards inside source clips (YAVG > 165; check the contact sheet for logo outros).
 - **Best quality always** (background footage quality is what keeps viewers): lanczos scaling, light unsharp on low-res sources, x264 slow CRF 12 for segments, CRF 15 final, AAC 320k. If his clips are low-res (WhatsApp-compressed), tell him once to send originals.
-- **Music**: deliver ONE version **without background music**; he adds the song in TikTok (his pick: Metamorphosis – INTERWORLD, 21% under the voice). Claude cannot download songs (network is blocked). Only add music if he sends the audio file: `--music file --mvol 0.21`.
+- **Music**: deliver ONE version **without background music**; he adds the song in TikTok. **Only these songs** (his approved list): Metamorphosis – INTERWORLD (his default, 21% under the voice), Rapture – INTERWORLD, Close Eyes – DVRST, Murder In My Mind – Kordhell, Sahara – Hensonn, Sleepwalker – akiaura, Neon Blade – MoonDeity, Can You Feel My Heart – Bring Me The Horizon (dramatic openings), After Dark – Mr.Kitty (emotional moments). Suggest one per video from this list. Claude cannot download songs (network is blocked). Only add music if he sends the audio file: `--music file --mvol 0.21`.
 - No "18+" line unless he asks.
 - When unsure about anything that changes the result (which clip is which team, missing clip, wording), ask before building. Never guess a team from a clip: check jerseys/logos frame by frame with timestamps, and ask if unclear.
 
 ## Brand: יום המזל (YOM HAMZEL)
 All videos are for his TikTok page **יום המזל** (clover, gold coins, green). Make every video recognisably his:
-- logo badge on every slip, **logo end card** on the last beat (`"logo":true` → big logo pops with a sparkle chime, gentle pulse), green #38e07b accents (slip border/glow, hook glow, pick words).
+- **small logo watermark top-right for the whole video** (124px, right 42 / top 78; hidden while the end logo shows), **logo end card** on the last beat (he loves it) (`"logo":true` → big logo pops with a sparkle chime, gentle pulse), green #38e07b accents (slip border/glow, hook glow, pick words).
 - The logo file is `assets/logo.png` next to this SKILL.md (round, transparent). Copy it to `/home/claude/fv/tools/logo.png` at setup and into each `<proj>/img/`.
 
 ## Editing style (learned from his reference videos, 25.10 — his own best + competitor "הכריש")
@@ -33,7 +34,7 @@ All videos are for his TikTok page **יום המזל** (clover, gold coins, gree
 - **Strong first frame**: hook on a close-up face or big celebration, caption visible from frame 1.
 - **Comment CTA works**: when he writes one ("תכתבו בתגובות ... ואשלח קישור"), keep it as its own beat near the end.
 - Competitors zoom in hard on faces — he wants **no heavy zoom**; keep our no-zoom rule.
-- Sound design: pleasant, punchy, never hissy noise. Effects: impact (hook), pop (match card), ka-ching (slip), sparkle (logo end card).
+- Sound design: pleasant, punchy, never hissy noise. Effects: phonk hit (hook), pop (match card), soft coin (slip), sparkle (logo end card).
 - His reference was 64s; his own tips videos stay ≤40s (fixed rule).
 
 ## His saved choices (control page)
@@ -193,12 +194,12 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
   text-shadow:0 0 3px #000,0 2px 4px rgba(0,0,0,.95),0 4px 14px rgba(0,0,0,.7)}
 .cap .ln{transform-origin:50% 50%}.cap span{margin:0 9px;display:inline-block}
 .cap .hl{color:#38e07b}.cap .hl2{color:#3ec6ff}
-.card{position:absolute;left:60px;right:60px;top:250px;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
+.card{position:absolute;left:60px;right:60px;bottom:1030px;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
 .card img{display:block;width:100%}
 .slipw{position:absolute;left:110px;right:110px;top:1110px;transform-origin:50% 50%}
 .slip{border-radius:14px;overflow:hidden;border:5px solid #38e07b;box-shadow:0 0 34px rgba(56,224,123,.55),0 22px 50px rgba(0,0,0,.6)}
 .slip img{display:block;width:100%}
-.badge{position:absolute;left:-52px;top:-62px;width:150px;height:150px;filter:drop-shadow(0 8px 14px rgba(0,0,0,.6))}
+.wm{position:absolute;right:42px;top:78px;width:124px;height:124px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .logo{position:absolute;left:300px;width:480px;top:370px;transform-origin:50% 50%;filter:drop-shadow(0 0 40px rgba(56,224,123,.65)) drop-shadow(0 20px 40px rgba(0,0,0,.6))}
 .wa{position:absolute;left:80px;right:80px;top:560px;background:#25d366;border-radius:40px;padding:34px 40px;display:flex;align-items:center;gap:30px;
   box-shadow:0 22px 50px rgba(0,0,0,.55);transform-origin:50% 50%;color:#06301a}
@@ -226,8 +227,8 @@ function render(t){
     if(b.type==='hook')continue;
     if(b.m){const s=b.start,e=Math.max(b.end,s+1.6);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       html+=`<div class="card" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.m}"></div>`;key+='m'+b.m+sc.toFixed(3)}}
-    if(b.s){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);const bs=pop((t-s-0.15)/0.3);
-      html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip"><img src="img/${b.s}"></div><img class="badge" src="img/logo.png" style="transform:scale(${bs.toFixed(3)}) rotate(${(-8+8*Math.min(1,(t-s)/0.5)).toFixed(1)}deg)"></div>`;key+='s'+b.s+sc.toFixed(3)+bs.toFixed(3)+Math.min(1,(t-s)/0.5).toFixed(2)}}
+    if(b.s){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
+      html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip"><img src="img/${b.s}"></div></div>`;key+='s'+b.s+sc.toFixed(3)}}
     if(b.logo){const s=b.start;if(t>=s){const sc=pop((t-s)/0.4);const br=1+0.025*Math.sin((t-s)*5);
       html+=`<img class="logo" src="img/logo.png" style="transform:scale(${(sc*br).toFixed(3)})">`;key+='L'+(sc*br).toFixed(3)}}
     if(b.wa){const s=b.start+0.15,e=b.end;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
@@ -235,6 +236,8 @@ function render(t){
       <path d="M38 30c2-2 5-2 6 1l3 7c1 2 0 4-2 5l-2 2c2 5 6 9 11 11l2-2c1-2 3-3 5-2l7 3c3 1 3 4 1 6l-3 3c-4 4-14 1-23-8s-12-19-8-23z" fill="#25d366"/></svg>
       <div><b>קבוצת הוואטסאפ שלנו</b><small>${WA_SUB}</small></div></div>`;key+='w'+sc.toFixed(3)}}
   }
+  // small logo watermark top-right for the whole video (hidden while the big end logo shows)
+  const lb=TL.find(b=>b.logo);if(!(lb&&t>=lb.start)){html+=`<img class="wm" src="img/logo.png">`;key+='W'}
   // captions: whole line is laid out up front, words are only revealed -> nothing ever moves
   let ci=-1;for(let k=0;k<CH.length;k++)if(t>=CH[k].t0)ci=k;
   if(ci>=0){const c=CH[ci];const nxt=ci+1<CH.length?CH[ci+1].t0:1e9;const hide=Math.min(nxt,c.t1+0.45);
@@ -291,8 +294,8 @@ if not a.skipbase:
   open(P+'seg/list.txt','w').write(''.join(f"file '{s}'\n" for s in segs))
   run(['ffmpeg','-y','-f','concat','-safe','0','-i',P+'seg/list.txt','-c','copy',P+'seg/base.mp4'])
 print('shots',[(os.path.basename(s)[:12],ss,round(d,2),round(f,3)) for s,ss,d,f in shots],'duration',D)
-# sounds: impact on the hook, soft pop on match cards, ka-ching on slips, sparkle on the logo end card
-ev=[(0.0,'impact',0.8)]+[(b['start'],'pop',0.55) for b in TL if b.get('m')]+[(b['start']+(0.4 if b.get('m') else 0.05),'kaching',0.75) for b in TL if b.get('s')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
+# sounds: phonk hit on the hook, soft pop on match cards, soft coin on slips, sparkle on the logo end card
+ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
 ins=['-i',P+'seg/base.mp4','-framerate','30','-i',P+'ov/ov_%05d.png','-i',P+'vo_final.wav']; fl=['[2:a]volume=1.0,apad[vo]']; mix=['[vo]']; n=3
 if a.music:
     ins+=['-ss',str(a.mstart),'-stream_loop','-1','-i',a.music]; fl.append(f'[{n}:a]volume={a.mvol},afade=t=in:d=0.3,afade=t=out:st={D-1.2}:d=1.2[mu]'); mix.append('[mu]'); n+=1
@@ -354,4 +357,20 @@ n=int(SR*1.2); t=np.arange(n)/SR; x=np.zeros(n)
 for k,(st,fq) in enumerate([(0,1568),(.07,2093),(.14,2637),(.21,3136)]):
     i=int(st*SR); tt=t[:n-i]; x[i:]+=np.sin(2*np.pi*fq*tt)*np.exp(-tt/.3)*(0.9-0.12*k)
 save(OUT+'/sparkle.wav',x)
+# phonk hit: distorted 808 drop + punchy kick + clap + down-sweep (cool, no bells) for the hook
+n=int(SR*1.3); t=np.arange(n)/SR
+f=48+70*np.exp(-t/.04); b808=np.tanh(2.8*np.sin(2*np.pi*np.cumsum(f)/SR))*np.exp(-t/.55)
+kick=np.sin(2*np.pi*np.cumsum(55+260*np.exp(-t/.012))/SR)*np.exp(-t/.09)
+cl=rng.standard_normal(n); cl=np.diff(np.concatenate([[0],cl]))*np.exp(-t/.05)*(t<.25)
+sw=rng.standard_normal(n); out=np.zeros(n); lo=0.0
+for i in range(n):
+    a=0.02+0.25*np.exp(-t[i]/.25); lo+=a*(sw[i]-lo); out[i]=lo
+sweep=out*np.exp(-t/.35)
+save(OUT+'/phonk.wav',0.9*b808+0.7*kick+0.35*cl+0.6*sweep)
+# coin: soft warm coin/chime for the slip (replaces the harsh ka-ching)
+n=int(SR*.9); t=np.arange(n)/SR; x=np.zeros(n)
+for st,fq in [(0,1175),(.08,1568)]:
+    i=int(st*SR); tt=t[:n-i]; x[i:]+=(np.sin(2*np.pi*fq*tt)+.25*np.sin(2*np.pi*2*fq*tt))*np.exp(-tt/.22)*np.minimum(tt/.004,1)
+k=int(SR*.03); x[:k]+=0.3*np.sin(2*np.pi*180*t[:k])*np.exp(-t[:k]/.01)
+save(OUT+'/coin.wav',x)
 ```
