@@ -233,6 +233,53 @@ object ModelStore {
         return Status.Ready
     }
 
+    /** Direct links of the pack's files, for downloading them with another app. */
+    fun links(pack: Pack) = pack.files().map { "https://github.com/$REPO/releases/download/${pack.tag}/$it" }
+
+    /**
+     * Installs a pack from files the user downloaded themselves (e.g. with a download manager
+     * app) into a folder they pick. Each file is copied and checked against the release size.
+     * Returns the names that are missing or wrong; empty means the pack is ready.
+     */
+    suspend fun importFrom(ctx: Context, pack: Pack, tree: Uri, progress: (String) -> Unit): List<String> = withContext(Dispatchers.IO) {
+        val expected = runCatching { githubJson("releases/tags/${pack.tag}").assets().associate { it.name to it.size } }.getOrNull()
+        val cr = ctx.contentResolver
+        val treeDoc = android.provider.DocumentsContract.getTreeDocumentId(tree)
+        val children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, treeDoc)
+        val found = HashMap<String, Pair<Uri, Long>>()
+        cr.query(children, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                found[c.getString(1)] = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)) to c.getLong(2)
+            }
+        }
+        val bad = pack.files().filter { name ->
+            val f = found[name] ?: return@filter true
+            val want = expected?.get(name)
+            want != null && f.second != want
+        }
+        CrashLog.log("Import ${pack.key}: ${found.size} files in folder, ${bad.size} missing or wrong: ${bad.joinToString()}")
+        if (bad.isNotEmpty()) return@withContext bad
+        cancel(ctx, pack)
+        val edit = prefs(ctx, pack).edit().putBoolean("complete", false)
+        edit.apply()
+        val files = pack.files()
+        files.forEachIndexed { i, name ->
+            progress("מעתיק ${i + 1}/${files.size}: $name")
+            val (uri, size) = found.getValue(name)
+            cr.openInputStream(uri)!!.use { input -> file(ctx, name).outputStream().use { input.copyTo(it, 1 shl 20) } }
+            if (file(ctx, name).length() != size) {
+                file(ctx, name).delete()
+                return@withContext listOf(name)
+            }
+            edit.putLong("size_$name", size)
+        }
+        edit.putBoolean("complete", true).apply()
+        CrashLog.log("Import ${pack.key} complete")
+        emptyList()
+    }
+
     fun cancel(ctx: Context, pack: Pack = MAIN) {
         val dm = ctx.getSystemService(DownloadManager::class.java)
         val ready = isReady(ctx, pack)

@@ -267,7 +267,22 @@ fun ModelPacksSection() {
     val status = rememberModelStatus(pack)
     var size by remember { mutableStateOf<Long?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    var importing by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { size = runCatching { ModelStore.availableSize(pack) }.getOrNull() }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree == null) return@rememberLauncherForActivityResult
+        err = null
+        scope.launch {
+            importing = "בודק את התיקייה…"
+            runCatching { ModelStore.importFrom(ctx, pack, tree) { importing = it } }
+                .onSuccess { bad ->
+                    err = if (bad.isEmpty()) null else "חסרים או לא שלמים ${bad.size} קבצים: ${bad.take(4).joinToString()}" +
+                        if (bad.size > 4) "…" else ""
+                }
+                .onFailure { CrashLog.error("TripoSG import", it); err = "הייבוא נכשל: ${it.message}" }
+            importing = null
+        }
+    }
     Section(title = "מודלים נוספים") {
         Text("אחרי ההורדה אפשר לבחור במסך היצירה איזה מודל יבנה את התלת־ממד.", color = C.Sub, fontSize = 12.sp)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(12.dp),
@@ -290,7 +305,9 @@ fun ModelPacksSection() {
                     GlowBar(status.done.toFloat() / status.total, Modifier.fillMaxWidth(), C.Primary)
                     SoftButton("בטל", Modifier.fillMaxWidth()) { ModelStore.cancel(ctx, pack) }
                 }
-                else -> {
+                else -> if (importing != null) {
+                    Text(importing!!, color = C.Sub, fontSize = 12.sp)
+                } else {
                     if (status is ModelStore.Status.Failed) Text(status.message, color = C.Red, fontSize = 12.sp)
                     if (size == null) Text("החבילה עוד לא פורסמה לשבב הזה", color = C.Faint, fontSize = 12.sp)
                     SoftButton("הורד" + (size?.let { " · ${it shr 20} MB" } ?: ""), Modifier.fillMaxWidth(),
@@ -300,6 +317,16 @@ fun ModelPacksSection() {
                             runCatching { ModelStore.startDownload(ctx, pack) }
                                 .onFailure { CrashLog.error("TripoSG download", it); err = it.message }
                         }
+                    }
+                    Text("מעדיף להוריד עם אפליקציית הורדות (למשל 1DM)? העתק את הקישורים, הורד את כל הקבצים לתיקייה אחת ובחר אותה.",
+                        color = C.Faint, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SoftButton("העתק קישורים", Modifier.weight(1f)) {
+                            val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("TripoSG", ModelStore.links(pack).joinToString("\n")))
+                            android.widget.Toast.makeText(ctx, "${pack.files().size} קישורים הועתקו", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        SoftButton("ייבוא מתיקייה", Modifier.weight(1f)) { pickFolder.launch(null) }
                     }
                 }
             }
