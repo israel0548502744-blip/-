@@ -83,7 +83,7 @@ object Settings {
 
     /** Bake a texture (sharp colors) instead of only per-vertex colors. On by default. */
     /** Version of the terms the user accepted (0 = never). Bump TERMS_VERSION when they change. */
-    const val TERMS_VERSION = 2
+    const val TERMS_VERSION = 3
     fun termsAccepted(ctx: Context) = prefs(ctx).getInt("terms_version", 0) >= TERMS_VERSION
     fun acceptTerms(ctx: Context) = prefs(ctx).edit().putInt("terms_version", TERMS_VERSION).apply()
 

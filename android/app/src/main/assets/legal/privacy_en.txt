@@ -9,7 +9,7 @@ In short: your photos never leave your phone. All processing happens on the devi
 
 1. Images and text you pick, capture or type are processed only on the phone and are never sent to us or to third parties.
 2. Models and creations are stored in the app's private folder on the phone and are deleted when you delete them or uninstall the app.
-3. Internet use is limited to downloading the AI models and app updates from GitHub (a Microsoft service). GitHub receives the phone's IP address and basic technical details, as with any website. No personal data, images or content are sent.
+3. Internet use is limited to downloading the AI models, app updates and a small app settings file from GitHub (a Microsoft service). GitHub receives the phone's IP address and basic technical details, as with any website, and processes them under its own privacy statement. We do not receive or store this information. Nothing else is sent: no name, account, device identifier, images or content.
 4. Crash and diagnostic logs (steps, errors, device model, Android version, free memory) are kept on the phone only. They leave the device only if you copy and send them yourself, and you can delete them at any time (Settings → Reports → Clear).
 5. Permissions: the app has no camera permission of its own (it opens the system camera and receives only the photo you took); photo picker for the image you choose; notifications and a foreground service so generation continues in the background; internet for downloads only.
 6. No ads, no tracking, no analytics, no accounts, and no sale or sharing of data.
