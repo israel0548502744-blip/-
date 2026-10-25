@@ -324,6 +324,14 @@ def export_dit(pipe, i, out, rng):
     lo, hi = DIT_PARTS[i]
     m = DitPart(pipe.transformer, lo, hi)
     x = dit_inputs(pipe, i, rng)
+    if os.environ.get("SG_FP16") == "1":
+        # Memory probe only: fp16 weights and inputs, exported without the accuracy checks.
+        import copy
+        m = copy.deepcopy(m).half()
+        x = [t.half() for t in x]
+        p = os.path.join(out, f"sg_dit{i}.onnx")
+        export(m, x, m.input_names(), m.output_names(), p)
+        return
     with torch.no_grad():
         y = m(*x)
     y = list(y) if isinstance(y, tuple) else [y]

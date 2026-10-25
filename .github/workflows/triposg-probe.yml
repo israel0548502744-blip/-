@@ -38,38 +38,18 @@ jobs:
       - name: Install
         run: |
           pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install "numpy<2" onnx onnxruntime onnxconverter-common transformers==4.46.3 huggingface_hub safetensors
+          pip install "numpy<2" onnx onnxruntime transformers==4.46.3 huggingface_hub safetensors
       - name: Fetch TripoSG weights (MIT)
         run: python -c "from huggingface_hub import snapshot_download; snapshot_download('VAST-AI/TripoSG', local_dir='/mnt/w/weights')"
       - name: Export the first DiT part
         env:
           SG_BATCH: ${{ matrix.batch }}
           SG_BLOCKS_PER_PART: ${{ matrix.blocks }}
+          SG_FP16: ${{ matrix.fp16 }}
         run: |
           python convert/export_triposg.py --weights /mnt/w/weights --out /mnt/w/onnx --parts dit0
           cd /mnt/w/onnx
-          if [ "${{ matrix.fp16 }}" = 1 ]; then
-            python - <<'PY'
-          import onnx
-          from onnxconverter_common import float16
-          m = onnx.load("sg_dit0.onnx")
-          m = float16.convert_float_to_float16(m, keep_io_types=True)
-          # The converter retypes tensors but leaves Cast(to=float) nodes inside the graph; make
-          # them cast to fp16, except the casts it added back to fp32 at the graph outputs.
-          outs = {o.name for o in m.graph.output}
-          for n in m.graph.node:
-              if n.op_type == "Cast" and not (set(n.output) & outs):
-                  for a in n.attribute:
-                      if a.name == "to" and a.i == onnx.TensorProto.FLOAT:
-                          a.i = onnx.TensorProto.FLOAT16
-          onnx.checker.check_model(m, full_check=False)
-          onnx.save(m, "probe.onnx", save_as_external_data=True, all_tensors_to_one_file=True, location="probe.onnx.data")
-          PY
-            rm sg_dit0.onnx sg_dit0.onnx.data
-            mv probe.onnx sg_probe_${{ matrix.name }}.onnx
-          else
-            mv sg_dit0.onnx sg_probe_${{ matrix.name }}.onnx
-          fi
+          mv sg_dit0.onnx sg_probe_${{ matrix.name }}.onnx
           ls -la
       - name: Compile for the NPU (SM8750)
         run: |
