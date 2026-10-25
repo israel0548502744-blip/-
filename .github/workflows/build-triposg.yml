@@ -22,7 +22,10 @@ permissions:
 env:
   # v2: exported with the project's own model code. v1 (original repository code) stays
   # published until the app switches over.
-  PACK_TAG: triposg-v2
+  PACK_TAG: triposg-v3
+  # v3: batch 1 (the guidance branches run one after the other). A batch-2 part is too big
+  # for the S25 Ultra's NPU (QNN error 1002); batch 1 loads (triposg-probe results).
+  SG_BATCH: "1"
 
 jobs:
   convert:

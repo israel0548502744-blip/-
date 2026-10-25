@@ -46,6 +46,8 @@ class SgEngine(private val context: Context) : AutoCloseable {
         val width = o.getInt("width")
         val condDim = o.getInt("cond_dim")
         val guidance = o.getDouble("guidance_scale").toFloat()
+        /** 2 = both guidance branches in one call; 1 = one branch per call (fits the NPU's memory). */
+        val batch = o.optInt("batch", 2)
         val defaultSteps = o.getInt("default_steps")
         val shift = o.getJSONObject("scheduler").getDouble("shift")
         private val dino = o.getJSONObject("dino")
@@ -218,7 +220,9 @@ class SgEngine(private val context: Context) : AutoCloseable {
             }
         }
 
-        val latents = timed(Stage.DENOISE) { denoise(cond, steps, seed, progress, cancelled) }
+        val latents = timed(Stage.DENOISE) {
+            if (c.batch == 1) denoiseSingle(cond, steps, seed, progress, cancelled) else denoise(cond, steps, seed, progress, cancelled)
+        }
 
         val res = COARSE shl LEVELS
         val field = timed(Stage.FIELD) { field(latents, progress, cancelled) }
@@ -270,6 +274,106 @@ class SgEngine(private val context: Context) : AutoCloseable {
             sessions.forEach { it.close() }
         }
         return lat
+    }
+
+    /**
+     * Denoising with batch-1 parts: every part runs twice per step (without and with the image).
+     * A batch-2 part does not fit in the NPU's memory, and neither do all seven parts at once, so
+     * as many parts as fit stay loaded and the rest are loaded for each step and closed again.
+     */
+    private fun denoiseSingle(cond: FloatArray, steps: Int, seed: Long, progress: (Stage, Float) -> Unit,
+                              cancelled: () -> Boolean): FloatArray {
+        val c = config
+        val n = c.tokens * c.channels
+        val rnd = Random(seed)
+        val lat = FloatArray(n) { rnd.nextGaussian().toFloat() }
+        val sig = c.sigmas(steps)
+        val condTokens = (cond.size / c.condDim).toLong()
+        if (c.parts.size != DIT_PARTS) throw IllegalStateException("חבילת TripoSG לא תואמת לגרסת האפליקציה, עדכן אחד מהם")
+        val cached = arrayOfNulls<OrtSession>(DIT_PARTS)
+        var budget = DIT_PARTS
+        /** The session for part i and whether it must be closed after use. */
+        fun session(i: Int): Pair<OrtSession, Boolean> {
+            cached[i]?.let { return it to false }
+            while (true) {
+                val open = cached.count { it != null }
+                try {
+                    val s = open("sg_dit$i")
+                    // Keep it if there is room, leaving one slot for the parts loaded per step.
+                    return if (open < budget - 1 || (budget == DIT_PARTS && open < budget)) {
+                        cached[i] = s; s to false
+                    } else s to true
+                } catch (e: Throwable) {
+                    if (open == 0) throw e
+                    budget = open
+                    CrashLog.log("TripoSG: NPU full with $open parts loaded, keeping ${budget - 1}")
+                    for (j in cached.indices.reversed()) if (cached[j] != null && cached.count { it != null } > budget - 1) {
+                        cached[j]!!.close(); cached[j] = null
+                    }
+                }
+            }
+        }
+        try {
+            tensor(FloatArray(cond.size), 1, condTokens, c.condDim.toLong()).use { uncondT ->
+                tensor(cond, 1, condTokens, c.condDim.toLong()).use { condT ->
+                    for (i in 0 until steps) {
+                        if (cancelled()) throw CancellationException()
+                        val t0 = System.nanoTime()
+                        val (vu, vc) = tensor(lat.copyOf(), 1, c.tokens.toLong(), c.channels.toLong()).use { latT ->
+                            tensor(timestepEmbedding(sig[i] * 1000).copyOf(c.width), 1, c.width.toLong()).use { tembT ->
+                                runDitSingle(::session, latT, tembT, listOf(uncondT, condT))
+                            }
+                        }
+                        val dt = (sig[i] - sig[i + 1]).toFloat()
+                        for (k in 0 until n) lat[k] += dt * (vu[k] + c.guidance * (vc[k] - vu[k]))
+                        if (i == 0) CrashLog.log("TripoSG step 1 in %.2fs, %d of %d parts kept loaded".format(
+                            (System.nanoTime() - t0) / 1e9, cached.count { it != null }, DIT_PARTS))
+                        progress(Stage.DENOISE, (i + 1f) / steps)
+                    }
+                }
+            }
+        } finally {
+            cached.forEach { it?.close() }
+        }
+        return lat
+    }
+
+    /** One DiT evaluation per condition, part by part; each part runs all conditions while loaded. */
+    private fun runDitSingle(session: (Int) -> Pair<OrtSession, Boolean>, latT: OnnxTensor, tembT: OnnxTensor,
+                             conds: List<OnnxTensor>): List<FloatArray> {
+        val results = ArrayList<OrtSession.Result>()
+        val named = conds.map { HashMap<String, OnnxTensor>() }
+        val hidden = arrayOfNulls<OnnxTensor>(conds.size)
+        val out = arrayOfNulls<FloatArray>(conds.size)
+        try {
+            for (i in 0 until DIT_PARTS) {
+                val (sess, temporary) = session(i)
+                try {
+                    val (inputs, outputs) = config.parts[i]
+                    for (b in conds.indices) {
+                        val feeds = HashMap<String, OnnxTensor>()
+                        for (name in inputs) feeds[name] = when (name) {
+                            "latents" -> latT
+                            "temb" -> tembT
+                            "cond" -> conds[b]
+                            "hidden_in" -> hidden[b] ?: throw IllegalStateException("no hidden state for part $i")
+                            else -> named[b][name] ?: throw IllegalStateException("missing $name for part $i")
+                        }
+                        val r = sess.run(feeds)
+                        if (i == DIT_PARTS - 1) { out[b] = r.use { it.floats() }; continue }
+                        results += r
+                        for ((k, name) in outputs.withIndex()) {
+                            if (name == "hidden") hidden[b] = r[k] as OnnxTensor else named[b][name] = r[k] as OnnxTensor
+                        }
+                    }
+                } finally {
+                    if (temporary) sess.close()
+                }
+            }
+        } finally {
+            results.forEach { it.close() }
+        }
+        return out.map { it ?: throw IllegalStateException("DiT has no final part") }
     }
 
     /**
