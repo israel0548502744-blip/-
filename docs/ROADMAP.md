@@ -81,6 +81,6 @@ with a trademark search: **Printora**, **Snap2Print**, **Formio**, **Pixel2Part*
 
 ## Early-user reward (owner, 2026-10-25)
 When the paid "Pro" in-app purchase is added (~6 months after launch), everyone who installed
-before that date keeps everything free. Implementation: the first launch stores a signed
+before that date gets Pro free for 3 months (owner's choice, 2026-10-25). Implementation: the first launch stores a signed
 "early user" flag locally and, for reinstalls, Play's purchase history of a free "early access"
 item claimed automatically during the free period (survives reinstall and new phones).
