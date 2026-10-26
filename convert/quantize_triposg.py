@@ -53,8 +53,23 @@ class Reader:
         return next(self.it, None)
 
 
+def _per_sample_calibration():
+    """Reduce activation ranges after every sample: one sample's intermediate tensors (attention
+    maps included) take gigabytes. ORT's own CalibMaxIntermediateOutputs drops the collected
+    data instead of reducing it, so collect_data is run on one sample at a time; each call
+    merges its ranges into the previous ones."""
+    from onnxruntime.quantization import calibrate
+    original = calibrate.MinMaxCalibrater.collect_data
+
+    def collect_each(self, reader):
+        while (sample := reader.get_next()) is not None:
+            original(self, Reader([sample]))
+    calibrate.MinMaxCalibrater.collect_data = collect_each
+
+
 def quantize(float_model, feeds, out_path, per_channel):
     from onnxruntime.quantization import QuantType, quantize
+    _per_sample_calibration()
     from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config, qnn_preprocess_model
     pre = float_model.replace(".onnx", ".pre.onnx")
     if qnn_preprocess_model(float_model, pre, save_as_external_data=True, all_tensors_to_one_file=True,
@@ -63,8 +78,6 @@ def quantize(float_model, feeds, out_path, per_channel):
     cfg = get_qnn_qdq_config(float_model, Reader(feeds), activation_type=QuantType.QUInt16,
                              weight_type=QuantType.QUInt8, per_channel=per_channel)
     cfg.use_external_data_format = True
-    # Reduce ranges after every sample: one sample's attention maps alone take gigabytes.
-    cfg.extra_options["CalibMaxIntermediateOutputs"] = 1
     quantize(float_model, out_path, cfg)
 
 

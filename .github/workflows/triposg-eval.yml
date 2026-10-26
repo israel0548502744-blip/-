@@ -21,6 +21,8 @@ env:
 
 jobs:
   guidance:
+    # Skipped on commits marked [int8-only] (re-runs of the int8 part alone).
+    if: ${{ !contains(github.event.head_commit.message, '[int8-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -114,6 +116,7 @@ jobs:
           gh release upload $PACK_TAG /mnt/w/npu/* --clobber
 
   pack-rest:
+    if: ${{ !contains(github.event.head_commit.message, '[int8-only]') }}
     # Config, DINOv2 and the VAE stay as in triposg-v3 (float); only the DiT is quantized.
     runs-on: ubuntu-latest
     steps:
@@ -186,8 +189,12 @@ jobs:
           merge-multiple: true
       - name: Summary and eval-results branch
         run: |
-          cd results
-          find . -name '*.glb' -delete
+          find results -name '*.glb' -delete
+          # Add to what earlier runs published (an [int8-only] run keeps the guidance results).
+          git clone -q --depth 1 -b eval-results "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}" branch \
+            || (mkdir branch && cd branch && git init -q -b eval-results)
+          cp -r results/. branch/
+          cd branch
           python3 - <<'PY' | tee summary.md >> "$GITHUB_STEP_SUMMARY"
           import json, glob
           print("| test | picture | variant | DiT passes | seconds | IoU | Chamfer % |")
@@ -197,7 +204,6 @@ jobs:
               for k, v in m["variants"].items():
                   print(f"| {f.split('/')[0]} | {m['image']} | {k} | {v['dit_passes']} | {v['seconds']} | {v.get('iou', '')} | {v.get('chamfer_pct', '')} |")
           PY
-          git init -q -b eval-results
           git add .
           git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -qm "TripoSG eval for ${GITHUB_SHA}"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}" eval-results
+          git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}" eval-results
