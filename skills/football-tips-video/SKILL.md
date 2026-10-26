@@ -9,7 +9,7 @@ The user makes these videos daily. He sends: football clips, match images (two l
 
 ## Fixed rules (never break)
 - **Wording: "תחזית/תחזיות", never "המלצה/המלצות"** (since 26.10 — a video was blocked under TikTok's gambling rules). In the script, captions and post text: "התחזית שלי", "התחזיות שלי למשחקים של היום", "לפני התחזית הבאה", "איזו תחזית הכי חזקה?". No "הימורים/הימורי לייב/ווינר/טוטו/betting" words or hashtags. Pick-sentence triggers become "התחזית שלי" / "אני צופה".
-- **Honest note for him**: renaming alone may not pass review — betting-slip screenshots (odds, "סכום", "החזר") and betting hashtags are the likely trigger. Default to a clean **prediction card** instead of the slip when he agrees (team names + predicted outcome, green frame, no odds/stake), and keep the content genuinely about predictions. Don't design videos to sneak betting promotion past TikTok's rules.
+- **Never show his betting-slip screenshots** (odds, "סכום", "החזר") — since 26.10 he approved replacing them. He still sends slips: read the match + pick from the slip and put a **prediction card** on the tip beat instead: `"p":{"match":"גלאטסראיי - פנרבחצ'ה","pick":"שתי הקבוצות יכבשו<br>+ לפחות 3 שערים"}` (green pill "התחזית שלי", match line, pick in big green; no odds, no stake). Phrase picks as football outcomes, not bet types: "מעל 2.5" → "לפחות 3 שערים", "כן" (BTTS) → "שתי הקבוצות יכבשו", "1x2 מחצית" → "X מובילה במחצית". Keep the content genuinely about predictions.
 - Max length **40 seconds** (aim for 39.0s of voice + 0.7s tail).
 - Always open with **"אל תפספסו את זה!!"** (or the exact opening line he writes, e.g. "אל תפספסו!"): huge white text with black outline + green glow, punch-zoom in, **phonk hit** sound (distorted 808 drop + kick + clap + down-sweep). **No bells/chimes on the opening** — he wants it cool and hard, like phonk football edits.
 - **The first 2 seconds decide everything.** Frame 0 = the most energetic, sharp, colorful moment he sent (players jumping/celebrating, a goal hitting the net) — never a blurry close-up or a slow wide tactical shot. Cut to a second dynamic shot by ~1.2s (when the intro line starts).
@@ -49,7 +49,7 @@ Control page artifact: https://claude.ai/artifact/8zmzrbfAPGTgjxvBUFEysS (db doc
    `ffmpeg -i clip.mp4 -vf "fps=1,scale=160:-1,drawtext=text='%{pts\:hms}':x=4:y=4:fontsize=14:fontcolor=yellow:box=1:boxcolor=black,tile=10x3" -frames:v 1 sheet.jpg`
    Identify team per clip and good moments (goal, celebration, logo outro to cut). Check md5 of uploads (he may resend the same file). Find flash frames:
    `ffmpeg -i clip.mp4 -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" -f null - | paste - - | sed -E 's/.*pts_time:([0-9.]+).*YAVG=([0-9.]+)/\1 \2/' | awk '$2>165'`
-3. **Script** → `<proj>/script.json`: list of beats `{"type": hook|line|match|tip|outro, "vo": text, "hl": words to color green, "m": match image file, "s": slip image file, "wa": true}`. Remove emojis. Fix only small spelling (כשמדובר, להיכנס, וואטסאפ, ברוז'). The text must be what the voice actually says, in order. Punctuation matters: every `, : . ! ?` is a phrase break used for timing.
+3. **Script** → `<proj>/script.json`: list of beats `{"type": hook|line|match|tip|outro, "vo": text, "hl": words to color green, "m": match image file, "p": prediction card {match, pick} (use this; "s" slip image is legacy, do not use), "wa": true}`. Remove emojis. Fix only small spelling (כשמדובר, להיכנס, וואטסאפ, ברוז'). The text must be what the voice actually says, in order. Punctuation matters: every `, : . ! ?` is a phrase break used for timing.
    Example: `[{"type":"hook","vo":"אל תפספסו את זה!!"},{"type":"line","vo":"אלו ההמלצות שלי למשחקים היום!"},{"type":"match","vo":"באיירן מינכן נגד ארסנל","m":"m-bayern.jpg"},{"type":"line","vo":"..."},{"type":"tip","vo":"ההמלצה שלי: באיירן מינכן או תיקו, ושתי הקבוצות כובשות","hl":"באיירן מינכן או תיקו, ושתי הקבוצות כובשות","s":"s-bayern.jpg"},{"type":"line","vo":"רק שנייה לפני ההמלצה הבאה, אל תשכחו להיכנס לקבוצת הוואטסאפ שלנו ...","hl":"קבוצת הוואטסאפ","wa":true},{"type":"line","vo":"איזו תחזית הכי חזקה? תכתבו בתגובות!","hl":"תכתבו בתגובות"}]`  ← always the last beat
 4. **Voice**: usually he sends the ElevenLabs MP3 himself. If he asks Claude to make it (ElevenLabs connector): `creative_create_flow`, then `creative_generate_speech` with model `eleven_v4`, voice **Itai – Upbeat Social Creator `JIxTgeeS5w0UQyBxEnrl`** (Hebrew), prompt = `[excited] [shouting] <hook> [excited] <rest of text>`. The audio URL is on storage.googleapis.com, which is blocked here, so give him the flow link and ask him to download the MP3 and attach it (his free tier was flagged once; if generation fails, tell him plainly). Save it as `<proj>/vo_raw.mp3`.
 5. **Set up** (once per session): write the tool files below into `/home/claude/fv/tools/`, run `python3 sfx.py` there, (the logo in `assets/` is kept only for reference; it is not used in videos). Font: `curl -sSL -o <proj>/fonts/Heebo.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf"` (raw.githubusercontent works; github.com/raw does not). Project dir: `/home/claude/fv/<name>/` with `script.json`, `plan.json`, `img/` (match + slip images), `fonts/Heebo.ttf`, `vo_raw.mp3`, and a copy of `overlay.html`.
@@ -203,6 +203,10 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .slipw{position:absolute;left:110px;right:110px;top:1110px;transform-origin:50% 50%}
 .slip{border-radius:14px;overflow:hidden;border:5px solid #38e07b;box-shadow:0 0 34px rgba(56,224,123,.55),0 22px 50px rgba(0,0,0,.6)}
 .slip img{display:block;width:100%}
+.pred{background:linear-gradient(180deg,rgba(14,30,20,.96),rgba(6,16,10,.96));padding:26px 34px 30px;text-align:center;color:#fff}
+.pred .tag{display:inline-block;background:#38e07b;color:#06301a;font-weight:900;font-size:36px;padding:4px 22px;border-radius:30px;margin-bottom:14px}
+.pred .mt{font-weight:700;font-size:40px;opacity:.9;margin-bottom:8px}
+.pred .pk{font-weight:900;font-size:54px;line-height:1.15;color:#38e07b}
 .wm{position:absolute;right:42px;top:78px;width:124px;height:124px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .logo{position:absolute;left:300px;width:480px;top:370px;transform-origin:50% 50%;filter:drop-shadow(0 0 40px rgba(56,224,123,.65)) drop-shadow(0 20px 40px rgba(0,0,0,.6))}
 .wa{position:absolute;left:80px;right:80px;top:560px;background:#25d366;border-radius:40px;padding:34px 40px;display:flex;align-items:center;gap:30px;
@@ -231,8 +235,10 @@ function render(t){
     if(b.type==='hook')continue;
     if(b.m){const s=b.start,e=Math.max(b.end,s+1.6);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       html+=`<div class="card" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.m}"></div>`;key+='m'+b.m+sc.toFixed(3)}}
-    if(b.s){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
-      html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip"><img src="img/${b.s}"></div></div>`;key+='s'+b.s+sc.toFixed(3)}}
+    if(b.s||b.p){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
+      // b.p = prediction card {match, pick} (no odds/stake); b.s = slip screenshot (legacy)
+      const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div></div>`:`<img src="img/${b.s}">`;
+      html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip">${inner}</div></div>`;key+='s'+(b.s||b.p.pick)+sc.toFixed(3)}}
     if(b.logo){const s=b.start;if(t>=s){const sc=pop((t-s)/0.4);const br=1+0.025*Math.sin((t-s)*5);
       html+=`<img class="logo" src="img/logo.png" style="transform:scale(${(sc*br).toFixed(3)})">`;key+='L'+(sc*br).toFixed(3)}}
     if(b.wa){const s=b.start+0.15,e=b.end;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
@@ -297,7 +303,7 @@ if not a.skipbase:
   run(['ffmpeg','-y','-f','concat','-safe','0','-i',P+'seg/list.txt','-c','copy',P+'seg/base.mp4'])
 print('shots',[(os.path.basename(s)[:12],ss,round(d,2),round(f,3)) for s,ss,d,f in shots],'duration',D)
 # sounds: phonk hit on the hook, soft pop on match cards, soft coin on slips, sparkle on the logo end card
-ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
+ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s') or b.get('p')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
 ins=['-i',P+'seg/base.mp4','-framerate','30','-i',P+'ov/ov_%05d.png','-i',P+'vo_final.wav']; fl=['[2:a]volume=1.0,apad[vo]']; mix=['[vo]']; n=3
 if a.music:
     ins+=['-ss',str(a.mstart),'-stream_loop','-1','-i',a.music]; fl.append(f'[{n}:a]volume={a.mvol},afade=t=in:d=0.3,afade=t=out:st={D-1.2}:d=1.2[mu]'); mix.append('[mu]'); n+=1
