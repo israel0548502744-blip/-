@@ -483,11 +483,11 @@ class SgEngine(private val context: Context) : AutoCloseable {
                             embedPoint(-c.bounds + id / (g * g) * step, -c.bounds + id / g % g * step,
                                 -c.bounds + id % g * step, buf, q * dim)
                         }
-                        // The exported decoder is positive outside: on the phone a mug came out 83% "inside"
-        // (a closed box around it). Flipped here so that inside is > 0 for SurfaceNets.
-        val logits = tensor(buf, 1, c.chunk.toLong(), dim.toLong()).use { p ->
+                        val logits = tensor(buf, 1, c.chunk.toLong(), dim.toLong()).use { p ->
                             s.run(mapOf("kv" to kvT, "points" to p)).use { it.floats() }
                         }
+                        // The exported decoder is positive outside: a mug came out 83% "inside" (a
+                        // closed box around it). Flipped so that inside is > 0 for SurfaceNets.
                         for (q in 0 until m) out[idx[start + q]] = -logits[q]
                         start += m; done += m
                         progress(Stage.FIELD, (done.toFloat() / total.coerceAtLeast(1)).coerceAtMost(0.99f))
