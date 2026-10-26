@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 class ProcessingService : Service() {
     companion object {
         private const val CHANNEL_PROGRESS = "progress"
-        private const val CHANNEL_DONE = "done"
+        // A channel's importance can't change once created, so the pop-up version has a new id.
+        private const val CHANNEL_DONE = "done_alert"
         private const val ID_PROGRESS = 1
         private const val ID_DONE = 2
 
@@ -42,6 +43,7 @@ class ProcessingService : Service() {
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentTitle("Makeo 3D")
                     .setContentText(text)
+                    .setCategory(Notification.CATEGORY_STATUS)
                     .setContentIntent(openApp(ctx, if (job.done) ACTION_RESULT else null))
                     .setAutoCancel(true)
                     .build())
@@ -58,7 +60,10 @@ class ProcessingService : Service() {
         private fun ensureChannels(ctx: Context) {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(NotificationChannel(CHANNEL_PROGRESS, "יצירת מודל", NotificationManager.IMPORTANCE_LOW))
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, "מודל מוכן", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.deleteNotificationChannel("done")
+            // High importance: pops up on top of the screen with sound and vibration.
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, "מודל מוכן", NotificationManager.IMPORTANCE_HIGH)
+                .apply { enableVibration(true) })
         }
     }
 
