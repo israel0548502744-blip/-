@@ -1,0 +1,29 @@
+{
+ "image": "2.png",
+ "steps": 10,
+ "seed": 0,
+ "variants": {
+  "baseline": {
+   "dit_passes": 0,
+   "seconds": 378,
+   "query_points": [
+    274625,
+    326446,
+    1435202
+   ],
+   "query_total": 2036273
+  },
+  "thin": {
+   "dit_passes": 0,
+   "seconds": 280,
+   "query_points": [
+    274625,
+    326446,
+    902467
+   ],
+   "query_total": 1503538,
+   "iou": 1.0,
+   "chamfer_pct": 0.231
+  }
+ }
+}
