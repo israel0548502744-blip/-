@@ -476,7 +476,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                 // Two buffers: the next chunk's points are embedded on the CPU while the NPU runs this one.
                 val bufs = arrayOf(FloatArray(c.chunk * dim), FloatArray(c.chunk * dim))
                 val embedder = java.util.concurrent.Executors.newSingleThreadExecutor()
-                var done = 0L; var total = 0L
+                var done = 0L; var total = 0L; var shown = 0f
                 var embedNs = 0L; var waitNs = 0L; var runNs = 0L; var chunks = 0
                 /** Evaluates [count] points of a (r+1)³ grid given by flat indices. */
                 fun query(r: Int, idx: IntArray, count: Int, out: FloatArray) {
@@ -510,7 +510,9 @@ class SgEngine(private val context: Context) : AutoCloseable {
                         // closed box around it). Flipped so that inside is > 0 for SurfaceNets.
                         for (q in 0 until m) out[idx[start + q]] = -logits[q]
                         start += m; done += m; cur = 1 - cur
-                        progress(Stage.FIELD, (done.toFloat() / total.coerceAtLeast(1)).coerceAtMost(0.99f))
+                        // Each level's size is known only when it starts: never let the bar go back.
+                        shown = maxOf(shown, (done.toFloat() / total.coerceAtLeast(1)).coerceAtMost(0.99f))
+                        progress(Stage.FIELD, shown)
                     }
                 }
 
@@ -518,7 +520,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                     var r = COARSE
                     var g = r + 1
                     var vals = FloatArray(g * g * g)
-                    total = vals.size.toLong() * 3  // rough: the finer levels query about as much again each
+                    total = vals.size.toLong() * 5  // rough: measured 1.0-1.8M points in all after a 275k first level
                     query(r, IntArray(vals.size) { it }, vals.size, vals)
                     val counts = arrayListOf(vals.size)
                     repeat(LEVELS) { level ->
@@ -533,7 +535,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                         val grown = dilate(mask, g2)
                         val idx = IntArray(grown.count { it }).also { a -> var n = 0; for (q in grown.indices) if (grown[q]) a[n++] = q }
                         counts += idx.size
-                        total = done + idx.size
+                        if (level == LEVELS - 1) total = done + idx.size
                         query(r2, idx, idx.size, fine)
                         vals = fine; r = r2; g = g2
                     }
