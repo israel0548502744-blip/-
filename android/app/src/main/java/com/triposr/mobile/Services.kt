@@ -131,7 +131,8 @@ enum class Generator(val label: String, val hint: String, val stages: List<Stage
 }
 
 /** A set of files downloaded together from the models release. */
-class Pack(val key: String, val title: String, val tag: String = ModelStore.RELEASE_TAG, val files: () -> List<String>)
+class Pack(val key: String, val title: String, val tag: String = ModelStore.RELEASE_TAG, val reuse: Pack? = null,
+           val files: () -> List<String>)
 
 /**
  * The TripoSR ONNX models (~1.7 GB) are not inside the APK. They are published once as a
@@ -146,12 +147,19 @@ object ModelStore {
     val FILES = listOf(TripoEngine.ENCODER, TripoEngine.DECODER)
     val MAIN = Pack("models", "TripoSR — מודל תלת־ממד") { FILES }
     val NPU = Pack("npu", "TripoSR — חבילת NPU") { NpuPack.files() }
-    /** TripoSG compiled for this chip's NPU (experimental, ~3 GB). Only offered on supported chips. */
     /** Smaller variants of the first TripoSG part, only to find what fits in the NPU's memory. */
     val SG_PROBE = Pack("sg_probe", "TripoSG — קבצי בדיקה", "triposg-probe") {
         NpuPack.chip()?.let { c -> SgEngine.PROBES.flatMap { listOf("sg_probe_${it}_${c}_ctx.onnx", "sg_probe_${it}_${c}_ctx_qnn.bin") } } ?: emptyList()
     }
-    val TRIPOSG = Pack("triposg_v3", "TripoSG — מודל צורה מדויק", "triposg-v3") { NpuPack.chip()?.let { SgEngine.files(it) } ?: emptyList() }
+    private val TRIPOSG_V3 = Pack("triposg_v3", "TripoSG", "triposg-v3") { NpuPack.chip()?.let { SgEngine.files(it) } ?: emptyList() }
+    /**
+     * TripoSG compiled for this chip's NPU (experimental, ~2.7 GB): the DiT in int8 weights /
+     * 16-bit activations, a third of the float size; shapes 99.4-99.7% the same (sg_eval.py int8).
+     * DINOv2 and the VAE are the same files as in v3, so a finished v3 download keeps them.
+     */
+    val TRIPOSG = Pack("triposg_v4", "TripoSG — מודל צורה מדויק", "triposg-v4-int8", reuse = TRIPOSG_V3) {
+        NpuPack.chip()?.let { SgEngine.files(it) } ?: emptyList()
+    }
 
     sealed interface Status {
         data object Missing : Status
@@ -196,8 +204,14 @@ object ModelStore {
         val dm = ctx.getSystemService(DownloadManager::class.java)
         cancel(ctx, pack)
         val edit = prefs(ctx, pack).edit()
+        var kept = 0
         for (name in pack.files()) {
             val asset = assets[name] ?: throw IllegalStateException("$name missing from release ${pack.tag}")
+            if (reusable(ctx, pack, name, asset.size)) {
+                edit.putLong("size_$name", asset.size).remove("id_$name")
+                kept++
+                continue
+            }
             file(ctx, name).delete()
             val req = DownloadManager.Request(Uri.parse(asset.url))
                 .setTitle(pack.title)
@@ -206,8 +220,14 @@ object ModelStore {
                 .setDestinationInExternalFilesDir(ctx, "models", name)
             edit.putLong("size_$name", asset.size).putLong("id_$name", dm.enqueue(req))
         }
-        edit.putBoolean("complete", false).apply()
-        CrashLog.log("Download ${pack.key} started: ${pack.files().sumOf { assets[it]?.size ?: 0 } shr 20} MB")
+        edit.putBoolean("complete", kept == pack.files().size).apply()
+        CrashLog.log("Download ${pack.key} started: ${pack.files().sumOf { assets[it]?.size ?: 0 } shr 20} MB, $kept files kept from ${pack.reuse?.key}")
+    }
+
+    /** [name] is already on disk from a finished download of the pack this one replaces, with the same size. */
+    private fun reusable(ctx: Context, pack: Pack, name: String, size: Long?): Boolean {
+        val old = pack.reuse?.takeIf { prefs(ctx, it).getBoolean("complete", false) } ?: return false
+        return size != null && size == prefs(ctx, old).getLong("size_$name", -1) && file(ctx, name).length() == size
     }
 
     fun status(ctx: Context, pack: Pack = MAIN): Status {
@@ -222,7 +242,7 @@ object ModelStore {
         var succeeded = 0
         dm.query(DownloadManager.Query().setFilterById(*ids.toLongArray())).use { c ->
             if (c.count == 0) return Status.Missing
-            if (c.count < files.size) return Status.Failed("ההורדה הופסקה, נסה שוב")
+            if (c.count < ids.size) return Status.Failed("ההורדה הופסקה, נסה שוב")
             while (c.moveToNext()) {
                 val st = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 done += c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
@@ -237,7 +257,7 @@ object ModelStore {
             }
         }
         if (total <= 0) total = 1
-        if (running || succeeded < files.size) return Status.Downloading(done, total)
+        if (running || succeeded < ids.size) return Status.Downloading(done, total)
         if (!sizesMatch(ctx, pack)) return Status.Failed("הקובץ שהורד לא תקין, נסה שוב")
         prefs(ctx, pack).edit().putBoolean("complete", true).apply()
         CrashLog.log("Download ${pack.key} complete")
@@ -265,7 +285,9 @@ object ModelStore {
                 found[c.getString(1)] = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)) to c.getLong(2)
             }
         }
+        val keep = pack.files().filter { it !in found && reusable(ctx, pack, it, expected?.get(it)) }.toSet()
         val bad = pack.files().filter { name ->
+            if (name in keep) return@filter false
             val f = found[name] ?: return@filter true
             val want = expected?.get(name)
             want != null && f.second != want
@@ -275,7 +297,8 @@ object ModelStore {
         cancel(ctx, pack)
         val edit = prefs(ctx, pack).edit().putBoolean("complete", false)
         edit.apply()
-        val files = pack.files()
+        val files = pack.files() - keep
+        keep.forEach { edit.putLong("size_$it", expected!!.getValue(it)) }
         files.forEachIndexed { i, name ->
             progress("מעתיק ${i + 1}/${files.size}: $name")
             val (uri, size) = found.getValue(name)
