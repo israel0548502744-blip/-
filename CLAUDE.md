@@ -5,7 +5,7 @@ Package id is still `com.triposr.mobile`.
 
 ## Rules
 - Start by reading `docs/HANDOFF.md` (current state, plan, lessons); update it after each milestone.
-- At each milestone push a `milestone/<name>` tag and list it in HANDOFF section 7. Every build also has an `apk-N` tag.
+- Every build has an `apk-N` git tag (restore points); list milestone builds in HANDOFF section 7.
 - Answer the user in Hebrew.
 - Only commercially permissive licenses (MIT/Apache/BSD/OFL). No non-commercial code or weights.
 - Never claim something works without a real test (CI run, screenshot, or the user's device report).
