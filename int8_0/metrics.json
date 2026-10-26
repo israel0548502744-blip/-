@@ -1,0 +1,17 @@
+{
+ "image": "0.png",
+ "steps": 25,
+ "seed": 0,
+ "variants": {
+  "baseline": {
+   "dit_passes": 50,
+   "seconds": 2157
+  },
+  "int8": {
+   "dit_passes": 50,
+   "seconds": 2778,
+   "iou": 0.9966,
+   "chamfer_pct": 0.269
+  }
+ }
+}
