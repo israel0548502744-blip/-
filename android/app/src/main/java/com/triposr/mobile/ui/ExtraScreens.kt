@@ -299,7 +299,7 @@ fun ModelPacksSection() {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("TripoSG · ניסיוני", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("צורה מדויקת וחדה יותר מ-TripoSR, בלי צבע. רץ על ה-NPU, כדקה למודל.", color = C.Sub, fontSize = 12.sp)
+                    Text("צורה מדויקת וחדה יותר מ-TripoSR, בלי צבע. רץ על ה-NPU, כ-2 דקות למודל.", color = C.Sub, fontSize = 12.sp)
                 }
             }
             when (status) {
