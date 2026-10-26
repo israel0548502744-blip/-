@@ -210,9 +210,14 @@ class SgEngine(private val context: Context) : AutoCloseable {
         val f = config.freqs
         out[at] = x; out[at + 1] = y; out[at + 2] = z
         var o = at + 3
-        val p = floatArrayOf(x, y, z)
-        for (k in 0..2) for (j in 0 until f) out[o++] = sin(p[k].toDouble() * (1 shl j)).toFloat()
-        for (k in 0..2) for (j in 0 until f) out[o++] = cos(p[k].toDouble() * (1 shl j)).toFloat()
+        for (k in 0..2) {
+            val p = (if (k == 0) x else if (k == 1) y else z).toDouble()
+            for (j in 0 until f) out[o++] = sin(p * (1 shl j)).toFloat()
+        }
+        for (k in 0..2) {
+            val p = (if (k == 0) x else if (k == 1) y else z).toDouble()
+            for (j in 0 until f) out[o++] = cos(p * (1 shl j)).toFloat()
+        }
     }
 
     // ------------------------------------------------------------------ pipeline
@@ -468,66 +473,88 @@ class SgEngine(private val context: Context) : AutoCloseable {
         open("sg_vae_query").use { s ->
             tensor(kv, 1, c.tokens.toLong(), (kv.size / c.tokens).toLong()).use { kvT ->
                 val dim = 3 * (2 * c.freqs + 1)
-                val buf = FloatArray(c.chunk * dim)
+                // Two buffers: the next chunk's points are embedded on the CPU while the NPU runs this one.
+                val bufs = arrayOf(FloatArray(c.chunk * dim), FloatArray(c.chunk * dim))
+                val embedder = java.util.concurrent.Executors.newSingleThreadExecutor()
                 var done = 0L; var total = 0L
+                var embedNs = 0L; var waitNs = 0L; var runNs = 0L; var chunks = 0
                 /** Evaluates [count] points of a (r+1)³ grid given by flat indices. */
                 fun query(r: Int, idx: IntArray, count: Int, out: FloatArray) {
                     val g = r + 1; val step = 2f * c.bounds / r
-                    var start = 0
-                    while (start < count) {
-                        if (cancelled()) throw CancellationException()
+                    fun embed(start: Int, buf: FloatArray) = embedder.submit(java.util.concurrent.Callable {
+                        val t0 = System.nanoTime()
                         val m = minOf(c.chunk, count - start)
-                        java.util.Arrays.fill(buf, 0f)
                         for (q in 0 until m) {
                             val id = idx[start + q]
                             embedPoint(-c.bounds + id / (g * g) * step, -c.bounds + id / g % g * step,
                                 -c.bounds + id % g * step, buf, q * dim)
                         }
-                        val logits = tensor(buf, 1, c.chunk.toLong(), dim.toLong()).use { p ->
+                        if (m < c.chunk) java.util.Arrays.fill(buf, m * dim, buf.size, 0f)
+                        embedNs += System.nanoTime() - t0
+                    })
+                    var start = 0
+                    var cur = 0
+                    var pending = embed(0, bufs[0])
+                    while (start < count) {
+                        if (cancelled()) throw CancellationException()
+                        val m = minOf(c.chunk, count - start)
+                        val t0 = System.nanoTime()
+                        pending.get()
+                        val t1 = System.nanoTime()
+                        if (start + m < count) pending = embed(start + m, bufs[1 - cur])
+                        val logits = tensor(bufs[cur], 1, c.chunk.toLong(), dim.toLong()).use { p ->
                             s.run(mapOf("kv" to kvT, "points" to p)).use { it.floats() }
                         }
+                        waitNs += t1 - t0; runNs += System.nanoTime() - t1; chunks++
                         // The exported decoder is positive outside: a mug came out 83% "inside" (a
                         // closed box around it). Flipped so that inside is > 0 for SurfaceNets.
                         for (q in 0 until m) out[idx[start + q]] = -logits[q]
-                        start += m; done += m
+                        start += m; done += m; cur = 1 - cur
                         progress(Stage.FIELD, (done.toFloat() / total.coerceAtLeast(1)).coerceAtMost(0.99f))
                     }
                 }
 
-                var r = COARSE
-                var g = r + 1
-                var vals = FloatArray(g * g * g)
-                total = vals.size.toLong() * 3  // rough: the finer levels query about as much again each
-                query(r, IntArray(vals.size) { it }, vals.size, vals)
-                val counts = arrayListOf(vals.size)
-                repeat(LEVELS) {
-                    val near = nearSurface(vals, g)
-                    val r2 = r * 2; val g2 = r2 + 1
-                    val fine = upsample(vals, g)
-                    val mask = BooleanArray(g2 * g2 * g2)
-                    for (i in 0 until g2) for (j in 0 until g2) for (k in 0 until g2)
-                        if (near[((i / 2) * g + j / 2) * g + k / 2]) mask[(i * g2 + j) * g2 + k] = true
-                    val grown = dilate(mask, g2)
-                    val idx = IntArray(grown.count { it }).also { a -> var n = 0; for (q in grown.indices) if (grown[q]) a[n++] = q }
-                    counts += idx.size
-                    total = done + idx.size
-                    query(r2, idx, idx.size, fine)
-                    vals = fine; r = r2; g = g2
-                }
-                CrashLog.log("TripoSG field: query points per level $counts")
-                // Outer layer counts as outside, so the surface is always closed.
-                for (i in 0 until g) for (j in 0 until g) for (k in 0 until g)
-                    if (i == 0 || j == 0 || k == 0 || i == g - 1 || j == g - 1 || k == g - 1) {
-                        val q = (i * g + j) * g + k
-                        if (vals[q] > 0f) vals[q] = -1e-3f
+                try {
+                    var r = COARSE
+                    var g = r + 1
+                    var vals = FloatArray(g * g * g)
+                    total = vals.size.toLong() * 3  // rough: the finer levels query about as much again each
+                    query(r, IntArray(vals.size) { it }, vals.size, vals)
+                    val counts = arrayListOf(vals.size)
+                    repeat(LEVELS) { level ->
+                        // The last level only needs the cells the surface crosses: no extra coarse margin
+                        // (checked against the full shell by sg_eval.py field).
+                        val near = nearSurface(vals, g, grow = level < LEVELS - 1)
+                        val r2 = r * 2; val g2 = r2 + 1
+                        val fine = upsample(vals, g)
+                        val mask = BooleanArray(g2 * g2 * g2)
+                        for (i in 0 until g2) for (j in 0 until g2) for (k in 0 until g2)
+                            if (near[((i / 2) * g + j / 2) * g + k / 2]) mask[(i * g2 + j) * g2 + k] = true
+                        val grown = dilate(mask, g2)
+                        val idx = IntArray(grown.count { it }).also { a -> var n = 0; for (q in grown.indices) if (grown[q]) a[n++] = q }
+                        counts += idx.size
+                        total = done + idx.size
+                        query(r2, idx, idx.size, fine)
+                        vals = fine; r = r2; g = g2
                     }
-                return vals
+                    CrashLog.log("TripoSG field: query points per level $counts, $chunks chunks: NPU %.1fs, ".format(runNs / 1e9) +
+                        "embedding %.1fs (waited %.1fs)".format(embedNs / 1e9, waitNs / 1e9))
+                    // Outer layer counts as outside, so the surface is always closed.
+                    for (i in 0 until g) for (j in 0 until g) for (k in 0 until g)
+                        if (i == 0 || j == 0 || k == 0 || i == g - 1 || j == g - 1 || k == g - 1) {
+                            val q = (i * g + j) * g + k
+                            if (vals[q] > 0f) vals[q] = -1e-3f
+                        }
+                    return vals
+                } finally {
+                    embedder.shutdown()
+                }
             }
         }
     }
 
-    /** Points whose value is small or whose sign differs from a neighbour, grown by one. */
-    private fun nearSurface(v: FloatArray, g: Int): BooleanArray {
+    /** Points whose value is small or whose sign differs from a neighbour, grown by one if [grow]. */
+    private fun nearSurface(v: FloatArray, g: Int, grow: Boolean = true): BooleanArray {
         val near = BooleanArray(v.size)
         for (i in 0 until g) for (j in 0 until g) for (k in 0 until g) {
             val q = (i * g + j) * g + k
@@ -537,7 +564,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                 (j > 0 && (v[q - g] > 0f) != s) || (j < g - 1 && (v[q + g] > 0f) != s) ||
                 (k > 0 && (v[q - 1] > 0f) != s) || (k < g - 1 && (v[q + 1] > 0f) != s)
         }
-        return dilate(near, g)
+        return if (grow) dilate(near, g) else near
     }
 
     /** 6-neighbour dilation by one. */

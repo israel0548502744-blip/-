@@ -9,6 +9,8 @@ rendered preview .png, and in metrics.json the agreement with the baseline:
 
   guidance   classifier-free guidance on every step vs. only while sigma is inside an interval
              (Kynkaenniemi et al. 2024): skipped steps run only the image branch
+  field      the shape-extraction shell of the last level: full (coarse margin) vs. thin (only
+             the cells the surface crosses), on the same latents; also counts the query points
   int8       DiT parts quantized to int8 weights / 16-bit activations (QDQ ONNX from
              quantize_triposg.py, run with ONNX Runtime on the CPU) vs. the float parts
 
@@ -96,7 +98,34 @@ def sample(pipe, cond, dit, steps, seed, guided):
     return lat, passes
 
 
-def decode(pipe, lat):
+def extract(query, res0=64, levels=2, thin_last=False):
+    """Like export_triposg.extract (coarse grid, then refine near the surface), as the app does it;
+    thin_last: the last level skips the coarse margin."""
+    from scipy.ndimage import binary_dilation, zoom
+    r = res0
+    g = np.linspace(-et.BOUNDS, et.BOUNDS, r + 1, dtype=np.float32)
+    vals = query(np.stack(np.meshgrid(g, g, g, indexing="ij"), -1).reshape(-1, 3)).reshape(r + 1, r + 1, r + 1)
+    counts = [vals.size]
+    for level in range(levels):
+        near = np.abs(vals) < 0.95
+        s = vals > 0
+        for ax in range(3):
+            for d in (1, -1):
+                near |= s != np.roll(s, d, ax)
+        if not (thin_last and level == levels - 1):
+            near = binary_dilation(near, iterations=1)
+        fine = zoom(vals, (2 * r + 1) / (r + 1), order=1)
+        mask = binary_dilation(zoom(near.astype(np.uint8), (2 * r + 1) / (r + 1), order=0).astype(bool), iterations=1)
+        r *= 2
+        g = np.linspace(-et.BOUNDS, et.BOUNDS, r + 1, dtype=np.float32)
+        idx = np.argwhere(mask)
+        fine[mask] = query(g[idx])
+        vals = fine
+        counts.append(len(idx))
+    return vals, r, counts
+
+
+def decode(pipe, lat, thin_last=False, counts=None):
     with torch.no_grad():
         kv = et.VaeKv(pipe.vae)(lat)
     q = et.VaeQuery(pipe.vae)
@@ -109,7 +138,9 @@ def decode(pipe, lat):
                 res.append(q(kv, e)[0, :, 0].numpy())
         return np.concatenate(res)
 
-    vals, r = et.extract(query)
+    vals, r, n = extract(query, thin_last=thin_last)
+    if counts is not None:
+        counts.extend(n)
     return vals, r
 
 
@@ -182,7 +213,7 @@ def parse_intervals(s):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["guidance", "int8"])
+    ap.add_argument("mode", choices=["guidance", "int8", "field"])
     ap.add_argument("--weights", required=True)
     ap.add_argument("--image", required=True)
     ap.add_argument("--isnet")
@@ -207,6 +238,22 @@ def main():
         save(vals, r, a.out, name)
         return (vals, r), {"dit_passes": passes, "seconds": round(time.time() - t0)}
 
+    if a.mode == "field":
+        # Same latents, two ways of extracting the surface; the phone's 10 steps.
+        lat, _ = sample(pipe, cond, torch_dit(pipe), a.steps, a.seed, lambda s: True)
+        shapes = {}
+        for name, thin in (("baseline", False), ("thin", True)):
+            t0, n = time.time(), []
+            vals, r = decode(pipe, lat, thin, n)
+            save(vals, r, a.out, name)
+            shapes[name] = (vals, r)
+            results["variants"][name] = {"dit_passes": 0, "seconds": round(time.time() - t0), "query_points": n,
+                                         "query_total": int(sum(n))}
+        results["variants"]["thin"].update(compare(shapes["baseline"], shapes["thin"]))
+        with open(os.path.join(a.out, "metrics.json"), "w") as f:
+            json.dump(results, f, indent=1)
+        print(json.dumps(results, indent=1))
+        return
     base, info = run("baseline", torch_dit(pipe), lambda s: True)
     results["variants"]["baseline"] = info
     if a.mode == "guidance":
