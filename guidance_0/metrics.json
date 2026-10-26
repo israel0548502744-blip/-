@@ -1,0 +1,29 @@
+{
+ "image": "0.png",
+ "steps": 25,
+ "seed": 0,
+ "variants": {
+  "baseline": {
+   "dit_passes": 50,
+   "seconds": 2007
+  },
+  "guidance_0.1-0.8": {
+   "dit_passes": 43,
+   "seconds": 1735,
+   "iou": 0.9838,
+   "chamfer_pct": 0.636
+  },
+  "guidance_0.15-1": {
+   "dit_passes": 47,
+   "seconds": 1872,
+   "iou": 0.9998,
+   "chamfer_pct": 0.184
+  },
+  "guidance_0-0.85": {
+   "dit_passes": 46,
+   "seconds": 1835,
+   "iou": 0.9943,
+   "chamfer_pct": 0.336
+  }
+ }
+}
