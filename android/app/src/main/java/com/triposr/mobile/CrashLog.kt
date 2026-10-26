@@ -102,7 +102,17 @@ object CrashLog {
     }
 
     /** Full diagnostics: device, app, model state plus recent log lines. */
-    fun diagnostics(): String = buildReport("Diagnostics", null, recentLog().takeLast(150))
+    fun diagnostics(): String {
+        // TripoSG loads its parts hundreds of times per run; those lines would push the useful ones out.
+        fun compact(lines: List<String>) = lines.filterNot { "TripoSG: opened sg_dit" in it }
+        val current = compact(recentLog())
+        // Right after a restart the interesting run is in the previous session's log.
+        val previous = if (current.size >= 40) emptyList() else
+            File(dir, "previous_session.log").takeIf { it.exists() }?.readLines()?.let(::compact)?.takeLast(100).orEmpty()
+        val log = if (previous.isEmpty()) current.takeLast(150)
+            else listOf("(previous session)") + previous + listOf("(this session)") + current
+        return buildReport("Diagnostics", null, log)
+    }
 
     fun buildReport(title: String, e: Throwable?, log: List<String>?): String = buildString {
         appendLine("=== Makeo 3D — $title ===")
