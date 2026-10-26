@@ -80,6 +80,8 @@ object CrashLog {
     }
 
     fun error(where: String, e: Throwable) {
+        // Leaving a screen cancels its work; that is not an error worth a report.
+        if (e is kotlinx.coroutines.CancellationException) return log("$where: cancelled (screen left)")
         log("ERROR in $where: $e")
         Health.report(where, e.toString())
         lastError = buildReport("Error in $where", e, lines.toList().takeLast(80))
