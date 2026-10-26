@@ -669,7 +669,7 @@ private fun AdvancedOptions(smoothOn: Boolean, generator: Generator) {
                     Text("יותר צעדים: צורה נקייה יותר אבל לאט יותר. הזמן עולה בערך ביחס ישר.", color = C.Sub, fontSize = 12.sp)
                     Spacer(Modifier.height(6.dp))
                     ToggleRow("הכוונה חכמה (ניסיוני)",
-                        "מדלג על חישוב ההשוואה בצעדים הראשונים והאחרונים: כשליש מהר יותר. נסה עם ובלי והשווה.",
+                        "מדלג על חישוב ההשוואה בחלק מהצעדים: כ-15% מהר יותר, הצורה כמעט זהה (98–99%).",
                         smartGuidance) { smartGuidance = it; Settings.setSgGuidanceInterval(ctx, it) }
                 } else {
                     Text("עובי ומילוי: %.0f".format(density) + if (density == TripoEngine.DENSITY_THRESHOLD) " (ברירת מחדל)" else "",
