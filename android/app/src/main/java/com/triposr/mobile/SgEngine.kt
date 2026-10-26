@@ -38,8 +38,9 @@ class SgEngine(private val context: Context) : AutoCloseable {
         const val MAX_TRIANGLES = 600_000
         /** RAM that must stay free after loading a part (below this Android may kill the app). */
         const val MIN_FREE_MB = 1300
-        /** A part is only kept loaded across steps while this much RAM stays free. */
-        const val KEEP_FREE_MB = 2600
+        /** A part is only kept loaded across steps while this much RAM stays free. Was 2600 for the
+         *  float parts (3x larger); the int8 load test opened all 7 with 1.5 GB still free. */
+        const val KEEP_FREE_MB = 1600
         const val LEVELS = 2
 
         fun files(chip: String) = listOf(CONFIG) + GRAPHS.flatMap { listOf("${it}_${chip}_ctx.onnx", "${it}_${chip}_ctx_qnn.bin") }
