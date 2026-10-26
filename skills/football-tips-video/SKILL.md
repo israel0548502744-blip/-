@@ -26,22 +26,22 @@ The user makes these videos daily. He sends: football clips, match images (two l
 - No "18+" line unless he asks.
 - When unsure about anything that changes the result (which clip is which team, missing clip, wording), ask before building. Never guess a team from a clip: check jerseys/logos frame by frame with timestamps, and ask if unclear.
 
-## Brand: יום המזל (YOM HAMZEL)
-All videos are for his TikTok page **יום המזל** (clover, gold coins, green). Make every video recognisably his:
-- **small logo watermark top-right for the whole video** (124px, right 42 / top 78; hidden while the end logo shows), **logo end card** on the last beat (he loves it) (`"logo":true` → big logo pops with a sparkle chime, gentle pulse), green #38e07b accents (slip border/glow, hook glow, pick words).
-- The logo file is `assets/logo.png` next to this SKILL.md (round, transparent). Copy it to `/home/claude/fv/tools/logo.png` at setup and into each `<proj>/img/`.
+## Brand / ending (since 26.10)
+- Videos are for his TikTok page **יום המזל**, but **no logo anywhere in the video** (no watermark, no end logo) and **no "בהצלחה לכולם / יום ירוק" closing line** — videos with them kept getting removed.
+- **The video always ends right after the comments CTA** ("איזו תחזית הכי חזקה? תכתבו בתגובות!") + 0.7s tail. Never add anything after it. If his voiceover still has a closing line after the CTA, drop that beat and cut the voice right after the CTA (short fade).
+- Green #38e07b accents stay (slip border/glow, hook glow, highlighted words).
 
 ## Editing style (learned from his reference videos, 25.10 — his own best + competitor "הכריש")
 - **Fast pace**: a new shot every ~1.5–2.5s (competitors cut every ~1.5–2s). Use several forward-only pieces per section (different moments/clips), never one long shot of 10s+. Cut on phrase breaks.
 - **B-roll matches the words**: goal/net shot on "שערים"/"כובשות", celebration on the pick, crowd/fans on "משחק פתוח", close-up face on emotional lines. Close-ups and celebrations beat wide tactical shots.
 - **Strong first frame**: hook on a big energetic celebration or a goal (sharp, colorful, lots of motion) — not a blurry close-up, not a calm wide shot. Caption visible from frame 1.
-- **Comment CTA works**: when he writes one ("תכתבו בתגובות ... ואשלח קישור"), keep it as its own beat near the end.
+- **Comment CTA is the ending**: always its own last beat.
 - Competitors zoom in hard on faces — he wants **no heavy zoom**; keep our no-zoom rule.
-- Sound design: pleasant, punchy, never hissy noise. Effects: phonk hit (hook), pop (match card), soft coin (slip), sparkle (logo end card).
+- Sound design: pleasant, punchy, never hissy noise. Effects: phonk hit (hook), pop (match card), soft coin (slip).
 - His reference was 64s; his own tips videos stay ≤40s (fixed rule).
 
 ## His saved choices (control page)
-Control page artifact: https://claude.ai/artifact/8zmzrbfAPGTgjxvBUFEysS (db doc `studio/v2`, read with ArtifactData get collection `studio` doc `v2`). Current picks (updated 25.10 from his chat corrections — **these rules in this file win over older values on the control page**): punch-zoom text on the hook (text only, never the clip), phonk hit on hook, soft pop on match card, soft coin on slip, slip at ~80% width with green frame, logo watermark top-right + logo end card, WhatsApp green card, male energetic voice, speed-up if over 40s, Heebo ExtraBold 80px, 3-word chunk captions (whole chunk at once), green highlight, middle of screen, no zoom on clips, no 18+. If he changes a choice there, read it before building.
+Control page artifact: https://claude.ai/artifact/8zmzrbfAPGTgjxvBUFEysS (db doc `studio/v2`, read with ArtifactData get collection `studio` doc `v2`). Current picks (updated 25.10 from his chat corrections — **these rules in this file win over older values on the control page**): punch-zoom text on the hook (text only, never the clip), phonk hit on hook, soft pop on match card, soft coin on slip, slip at ~80% width with green frame, no logo, video ends on the comments CTA, WhatsApp green card, male energetic voice, speed-up if over 40s, Heebo ExtraBold 80px, 3-word chunk captions (whole chunk at once), green highlight, middle of screen, no zoom on clips, no 18+. If he changes a choice there, read it before building.
 
 ## Workflow
 1. **Collect** clips, match images, slip images, text, voice MP3. Map each image to its match (by the names on the slip). He usually tells you which clip is which match and where the last pick goes.
@@ -50,9 +50,9 @@ Control page artifact: https://claude.ai/artifact/8zmzrbfAPGTgjxvBUFEysS (db doc
    Identify team per clip and good moments (goal, celebration, logo outro to cut). Check md5 of uploads (he may resend the same file). Find flash frames:
    `ffmpeg -i clip.mp4 -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" -f null - | paste - - | sed -E 's/.*pts_time:([0-9.]+).*YAVG=([0-9.]+)/\1 \2/' | awk '$2>165'`
 3. **Script** → `<proj>/script.json`: list of beats `{"type": hook|line|match|tip|outro, "vo": text, "hl": words to color green, "m": match image file, "s": slip image file, "wa": true}`. Remove emojis. Fix only small spelling (כשמדובר, להיכנס, וואטסאפ, ברוז'). The text must be what the voice actually says, in order. Punctuation matters: every `, : . ! ?` is a phrase break used for timing.
-   Example: `[{"type":"hook","vo":"אל תפספסו את זה!!"},{"type":"line","vo":"אלו ההמלצות שלי למשחקים היום!"},{"type":"match","vo":"באיירן מינכן נגד ארסנל","m":"m-bayern.jpg"},{"type":"line","vo":"..."},{"type":"tip","vo":"ההמלצה שלי: באיירן מינכן או תיקו, ושתי הקבוצות כובשות","hl":"באיירן מינכן או תיקו, ושתי הקבוצות כובשות","s":"s-bayern.jpg"},{"type":"line","vo":"רק שנייה לפני ההמלצה הבאה, אל תשכחו להיכנס לקבוצת הוואטסאפ שלנו ...","hl":"קבוצת הוואטסאפ","wa":true},{"type":"outro","vo":"בהצלחה לכולם!","hl":"בהצלחה לכולם!","logo":true}]`
+   Example: `[{"type":"hook","vo":"אל תפספסו את זה!!"},{"type":"line","vo":"אלו ההמלצות שלי למשחקים היום!"},{"type":"match","vo":"באיירן מינכן נגד ארסנל","m":"m-bayern.jpg"},{"type":"line","vo":"..."},{"type":"tip","vo":"ההמלצה שלי: באיירן מינכן או תיקו, ושתי הקבוצות כובשות","hl":"באיירן מינכן או תיקו, ושתי הקבוצות כובשות","s":"s-bayern.jpg"},{"type":"line","vo":"רק שנייה לפני ההמלצה הבאה, אל תשכחו להיכנס לקבוצת הוואטסאפ שלנו ...","hl":"קבוצת הוואטסאפ","wa":true},{"type":"line","vo":"איזו תחזית הכי חזקה? תכתבו בתגובות!","hl":"תכתבו בתגובות"}]`  ← always the last beat
 4. **Voice**: usually he sends the ElevenLabs MP3 himself. If he asks Claude to make it (ElevenLabs connector): `creative_create_flow`, then `creative_generate_speech` with model `eleven_v4`, voice **Itai – Upbeat Social Creator `JIxTgeeS5w0UQyBxEnrl`** (Hebrew), prompt = `[excited] [shouting] <hook> [excited] <rest of text>`. The audio URL is on storage.googleapis.com, which is blocked here, so give him the flow link and ask him to download the MP3 and attach it (his free tier was flagged once; if generation fails, tell him plainly). Save it as `<proj>/vo_raw.mp3`.
-5. **Set up** (once per session): write the tool files below into `/home/claude/fv/tools/`, run `python3 sfx.py` there, copy `assets/logo.png` there too. Font: `curl -sSL -o <proj>/fonts/Heebo.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf"` (raw.githubusercontent works; github.com/raw does not). Project dir: `/home/claude/fv/<name>/` with `script.json`, `plan.json`, `img/` (match + slip images), `fonts/Heebo.ttf`, `vo_raw.mp3`, and a copy of `overlay.html`.
+5. **Set up** (once per session): write the tool files below into `/home/claude/fv/tools/`, run `python3 sfx.py` there, (the logo in `assets/` is kept only for reference; it is not used in videos). Font: `curl -sSL -o <proj>/fonts/Heebo.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf"` (raw.githubusercontent works; github.com/raw does not). Project dir: `/home/claude/fv/<name>/` with `script.json`, `plan.json`, `img/` (match + slip images), `fonts/Heebo.ttf`, `vo_raw.mp3`, and a copy of `overlay.html`.
 6. **plan.json** – which clip plays under which part. A section starts at a beat index and runs to the next section; pieces are `[path, start_sec, available_sec]` and play forward back-to-back:
    `{"sections":[{"from":0,"pieces":[[celebration_clip,12.5,1.3]]},{"from":1,"pieces":[[teamA_clip,0,30]]},{"from":5,"pieces":[[teamB_clip,0,12.1],[teamB_clip,13.7,5.0]]},{"from":10,"pieces":[[teamC_clip,12,15.5]]}]}`
    Hook = strongest celebration (take it from a part of a clip that won't be used again). Each match section uses that match's clip from its "X נגד Y" beat; the WhatsApp line can keep running the previous match's clip. Keep slowdown under ~5% (give enough footage).
@@ -240,8 +240,6 @@ function render(t){
       <path d="M38 30c2-2 5-2 6 1l3 7c1 2 0 4-2 5l-2 2c2 5 6 9 11 11l2-2c1-2 3-3 5-2l7 3c3 1 3 4 1 6l-3 3c-4 4-14 1-23-8s-12-19-8-23z" fill="#25d366"/></svg>
       <div><b>קבוצת הוואטסאפ שלנו</b><small>${WA_SUB}</small></div></div>`;key+='w'+sc.toFixed(3)}}
   }
-  // small logo watermark top-right for the whole video (hidden while the big end logo shows)
-  const lb=TL.find(b=>b.logo);if(!(lb&&t>=lb.start)){html+=`<img class="wm" src="img/logo.png">`;key+='W'}
   // captions: whole line is laid out up front, words are only revealed -> nothing ever moves
   let ci=-1;for(let k=0;k<CH.length;k++)if(t>=CH[k].t0)ci=k;
   if(ci>=0){const c=CH[ci];const nxt=ci+1<CH.length?CH[ci+1].t0:1e9;const hide=Math.min(nxt,c.t1+0.45);
