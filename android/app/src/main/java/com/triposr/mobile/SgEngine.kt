@@ -35,6 +35,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
         /** Probe variants (batch x blocks, h = fp16 weights), see triposg-probe.yml. */
         val PROBES = listOf("b1x1", "b2x1", "b1x3", "b1x3h")
         const val COARSE = 64
+        const val MAX_TRIANGLES = 600_000
         /** RAM that must stay free after loading a part (below this Android may kill the app). */
         const val MIN_FREE_MB = 1300
         /** A part is only kept loaded across steps while this much RAM stays free. */
@@ -252,7 +253,9 @@ class SgEngine(private val context: Context) : AutoCloseable {
         if (mesh.vertexCount == 0) throw IllegalStateException("TripoSG לא מצא צורה. נסה תמונה אחרת.")
         CrashLog.log("TripoSG surface: ${mesh.vertexCount} vertices, ${mesh.triangleCount} triangles")
         mesh = timed(Stage.COLOR) {
-            val m = if (smoothIterations > 0) MeshTools.smooth(mesh, smoothIterations) else mesh
+            var m = if (smoothIterations > 0) MeshTools.smooth(mesh, smoothIterations) else mesh
+            // Above ~600k triangles the viewer and the print check run out of Java heap.
+            if (m.triangleCount > MAX_TRIANGLES) m = MeshTools.simplify(m, 1f - MAX_TRIANGLES.toFloat() / m.triangleCount)
             m.colors = FloatArray(m.positions.size) { 0.82f }
             m
         }
@@ -480,10 +483,12 @@ class SgEngine(private val context: Context) : AutoCloseable {
                             embedPoint(-c.bounds + id / (g * g) * step, -c.bounds + id / g % g * step,
                                 -c.bounds + id % g * step, buf, q * dim)
                         }
-                        val logits = tensor(buf, 1, c.chunk.toLong(), dim.toLong()).use { p ->
+                        // The exported decoder is positive outside: on the phone a mug came out 83% "inside"
+        // (a closed box around it). Flipped here so that inside is > 0 for SurfaceNets.
+        val logits = tensor(buf, 1, c.chunk.toLong(), dim.toLong()).use { p ->
                             s.run(mapOf("kv" to kvT, "points" to p)).use { it.floats() }
                         }
-                        for (q in 0 until m) out[idx[start + q]] = logits[q]
+                        for (q in 0 until m) out[idx[start + q]] = -logits[q]
                         start += m; done += m
                         progress(Stage.FIELD, (done.toFloat() / total.coerceAtLeast(1)).coerceAtMost(0.99f))
                     }
