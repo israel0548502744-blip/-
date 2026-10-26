@@ -4,6 +4,8 @@ Android app (Galaxy S25 Ultra, SM8750): photo → 3D model, fully on-device (ONN
 Package id is still `com.triposr.mobile`.
 
 ## Rules
+- Start by reading `docs/HANDOFF.md` (current state, plan, lessons); update it after each milestone.
+- At each milestone push a `milestone/<name>` tag and list it in HANDOFF section 7. Every build also has an `apk-N` tag.
 - Answer the user in Hebrew.
 - Only commercially permissive licenses (MIT/Apache/BSD/OFL). No non-commercial code or weights.
 - Never claim something works without a real test (CI run, screenshot, or the user's device report).
