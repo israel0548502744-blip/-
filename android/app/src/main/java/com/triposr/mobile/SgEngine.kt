@@ -387,7 +387,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
     /** One DiT evaluation per condition, part by part; each part runs all conditions while loaded. */
     private fun runDitSingle(session: (Int) -> Pair<OrtSession, Boolean>, latT: OnnxTensor, tembT: OnnxTensor,
                              conds: List<OnnxTensor>): List<FloatArray> {
-        val owned = ArrayList<OnnxTensor>()
+        val results = ArrayList<OrtSession.Result>()
         val named = conds.map { HashMap<String, OnnxTensor>() }
         val hidden = arrayOfNulls<OnnxTensor>(conds.size)
         val out = arrayOfNulls<FloatArray>(conds.size)
@@ -407,14 +407,11 @@ class SgEngine(private val context: Context) : AutoCloseable {
                         }
                         val r = sess.run(feeds)
                         if (i == DIT_PARTS - 1) { out[b] = r.use { it.floats() }; continue }
-                        // Own copies: outputs of a part that is closed right after must not point
-                        // into memory that goes away with it.
-                        r.use {
-                            for ((k, name) in outputs.withIndex()) {
-                                val t = it[k] as OnnxTensor
-                                val copy = tensor(it.floats(k), *t.info.shape).also { c -> owned += c }
-                                if (name == "hidden") hidden[b] = copy else named[b][name] = copy
-                            }
+                        // Outputs are ORT-owned CPU buffers, independent of the session, so they stay
+                        // valid after a per-step part is closed (copying them ran out of Java heap).
+                        results += r
+                        for ((k, name) in outputs.withIndex()) {
+                            if (name == "hidden") hidden[b] = r[k] as OnnxTensor else named[b][name] = r[k] as OnnxTensor
                         }
                     }
                 } finally {
@@ -422,7 +419,7 @@ class SgEngine(private val context: Context) : AutoCloseable {
                 }
             }
         } finally {
-            owned.forEach { it.close() }
+            results.forEach { it.close() }
         }
         return out.map { it ?: throw IllegalStateException("DiT has no final part") }
     }
