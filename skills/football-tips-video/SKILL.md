@@ -15,6 +15,8 @@ The user makes these videos daily. He sends: football clips, match images (two l
 - **The first 2 seconds decide everything.** Frame 0 = the most energetic, sharp, colorful moment he sent (players jumping/celebrating, a goal hitting the net) — never a blurry close-up or a slow wide tactical shot. Cut to a second dynamic shot by ~1.2s (when the intro line starts).
 - **Match image** pops in **just above the captions** (card bottom at 890px, so it sits mid-upper screen — not up at the top) **the moment the voice says "X נגד Y"**, with a soft bubbly **pop** (he disliked the whoosh noise there). Stays ~1.6s minimum.
 - **Prediction card** (`p`) pops in **when the voice starts the pick sentence** ("התחזית שלי", "אני צופה"), with a **soft warm coin** sound (the bright ka-ching was too harsh), and **stays until the end of that sentence**. ~80% of the screen width (top 1110px), green border + glow. **No logo on it.** Make that sentence its own `tip` beat. If the pick sentence also introduces the match ("התחזית שלי לקלאסיקו"), put `m` and `p` on the same tip beat; the card then comes 0.35s after the match image.
+- **Story photo** (`"k":"kane.jpg"` on a beat): when he sends a news photo (e.g. Kane kissing the Ballon d'Or) and asks to mention it, write a line about it and put `k` on that beat — the photo pops in (pop sound) centred above the captions with a green frame (500px wide), from the start of the beat to its end (min 1.8s). Facts like this come from him, never invented.
+- **No slips sent**: if he sends only match images and says "script everything", choose sensible predictions yourself, list them clearly as your choice and ask him to confirm/send slips before he records.
 - **WhatsApp line** ("רק רגע לפני התחזית הבאה, תשימו עוקב ותיכנסו לקבוצת הוואטסאפ...") gets a green card "קבוצת הוואטסאפ שלנו / הקישור בביו".
 - **Captions** (style learned from his reference edit, 25.10): Heebo ExtraBold **80px** (he asked for bigger than 66), white with a soft dark shadow (no thick outline), **in the middle of the screen** (top 930px) between the match card and the slip, **max 3 words per chunk, the whole chunk appears at once** (80ms fade), no jumping. Pick words green #38e07b (`hl`); a brand/name word can be cyan #3ec6ff (`hl2`, set per word in timeline). Slip sits lower (top 1110px) so it never covers captions.
 - **NO ZOOM AT ALL on clips** (he hates it — "זום מגעיל"). This includes the hidden zoom from stabilization: vidstab `optzoom=1` without limits zoomed ~40% on panning shots. vidstab is capped (`maxshift=8:maxangle=0.004`, zoom ≤ ~3%, static). If any zoom is ever needed, only tiny and slow. After building, compare a frame of each shot with the same source frame to confirm the framing matches.
@@ -181,7 +183,7 @@ const fs = require('fs'), path = require('path');
   await p.evaluate(tl => setTL(tl), JSON.parse(fs.readFileSync(tlPath, 'utf8')));
   await p.evaluate(() => document.fonts.ready);
   // preload images
-  const imgs = [...new Set(JSON.parse(fs.readFileSync(tlPath, 'utf8')).flatMap(b => [b.m, b.s].filter(Boolean)).concat(['logo.png']))];
+  const imgs = [...new Set(JSON.parse(fs.readFileSync(tlPath, 'utf8')).flatMap(b => [b.m, b.s, b.k].filter(Boolean)).concat(['logo.png']))];
   await p.evaluate(list => Promise.all(list.map(n => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = 'img/' + n; }))), imgs);
   if (process.env.WA_SUB) await p.evaluate(v => { WA_SUB = v; }, process.env.WA_SUB);
   let prevKey = null, prevFile = null, shots = 0;
@@ -211,6 +213,8 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .cap .hl{color:#38e07b}.cap .hl2{color:#3ec6ff}
 .card{position:absolute;left:60px;right:60px;bottom:1030px;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
 .card img{display:block;width:100%}
+.pic{position:absolute;left:250px;right:250px;bottom:1030px;border-radius:26px;overflow:hidden;border:6px solid #38e07b;box-shadow:0 0 40px rgba(56,224,123,.55),0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
+.pic img{display:block;width:100%}
 .slipw{position:absolute;left:110px;right:110px;top:1110px;transform-origin:50% 50%}
 .slip{border-radius:14px;overflow:hidden;border:5px solid #38e07b;box-shadow:0 0 34px rgba(56,224,123,.55),0 22px 50px rgba(0,0,0,.6)}
 .slip img{display:block;width:100%}
@@ -246,6 +250,9 @@ function render(t){
     if(b.type==='hook')continue;
     if(b.m){const s=b.start,e=Math.max(b.end,s+1.6);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       html+=`<div class="card" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.m}"></div>`;key+='m'+b.m+sc.toFixed(3)}}
+    // b.k = a story photo (e.g. a player with a trophy) that pops in when the voice starts this beat
+    if(b.k){const s=b.start,e=Math.max(b.end,s+1.8);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
+      html+=`<div class="pic" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.k}"></div>`;key+='k'+b.k+sc.toFixed(3)}}
     if(b.s||b.p){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       // b.p = prediction card {match, pick} (no odds/stake); b.s = slip screenshot (legacy)
       const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div></div>`:`<img src="img/${b.s}">`;
@@ -314,7 +321,7 @@ if not a.skipbase:
   run(['ffmpeg','-y','-f','concat','-safe','0','-i',P+'seg/list.txt','-c','copy',P+'seg/base.mp4'])
 print('shots',[(os.path.basename(s)[:12],ss,round(d,2),round(f,3)) for s,ss,d,f in shots],'duration',D)
 # sounds: phonk hit on the hook, soft pop on match cards, soft coin on slips, sparkle on the logo end card
-ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s') or b.get('p')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
+ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m') or b.get('k')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s') or b.get('p')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
 ins=['-i',P+'seg/base.mp4','-framerate','30','-i',P+'ov/ov_%05d.png','-i',P+'vo_final.wav']; fl=['[2:a]volume=1.0,apad[vo]']; mix=['[vo]']; n=3
 if a.music:
     ins+=['-ss',str(a.mstart),'-stream_loop','-1','-i',a.music]; fl.append(f'[{n}:a]volume={a.mvol},afade=t=in:d=0.3,afade=t=out:st={D-1.2}:d=1.2[mu]'); mix.append('[mu]'); n+=1
