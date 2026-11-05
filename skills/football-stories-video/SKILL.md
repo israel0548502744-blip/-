@@ -1,37 +1,46 @@
 ---
 name: "football-stories-video"
-description: "Football stories knowledge base (156 checked stories + 60 quick facts, in Hebrew) and the method for turning one into a vertical TikTok story video (סרטון סיפור כדורגל / 'הידעתם?'). Use when the user asks for a football story, story ideas, a story video script, or 'what's the next story'."
+description: "All of the user's vertical TikTok football videos in one skill: (1) the daily predictions video (סרטון תחזיות כדורגל, page יום המזל) built from their clips, match images, slips and voiceover — full rules and tools in tips-video.md; (2) football story videos (סרטון סיפור כדורגל / 'הידעתם?') from a knowledge base of 156 checked stories + 60 quick facts in Hebrew. Use for predictions videos, voiceover scripts, football stories, story ideas, or 'what's the next story'."
 ---
 
-# סרטוני סיפורי כדורגל (Football story videos)
+# סרטוני כדורגל: תחזיות + סיפורים (Football videos: predictions + stories)
 
-The user makes vertical TikTok football videos (daily predictions, see the `football-tips-video` skill). This skill is for a second format: **interesting football stories**. Talk to the user in short, simple, everyday Hebrew.
+The user makes vertical TikTok football videos in two formats. Talk to the user in short, simple, everyday Hebrew.
 
-## What's in `stories/`
+| Format | When | Read |
+|---|---|---|
+| **Daily predictions video** (סרטון תחזיות) | The user sends clips, match images, slips, voiceover, or asks for a predictions script / "כמה פגענו" | **`tips-video.md` — read it fully and follow it exactly.** It is the complete football-tips-video skill: fixed rules, house style, workflow, and the tool files (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`). Brand assets are in `assets/`. |
+| **Story video** (סרטון סיפור / "הידעתם?") | The user asks for a football story, story ideas, a story script | This file + `stories/`. The video build uses the same tools from `tips-video.md`. |
+
+The rest of this file is about story videos.
+
+## Files
 | File | Contents |
 |---|---|
-| `INDEX.md` | List of every story with its id (`06-1` = file 06, story 1) |
-| `01-legends.md` | Legends: Messi's napkin, Maradona, Pelé, Zidane, Cruyff, Yashin, Maldini… |
-| `02-comebacks.md` | Comebacks and crazy games: Istanbul 2005, 6-1, 4-0 at Anfield, 7-1, 93:20… |
-| `03-cinderella.md` | Underdogs: Leicester, Greece 2004, Denmark 92, Iceland, Morocco, Wrexham… |
-| `04-scandals.md` | Hand of God, Zidane headbutt, Suárez, Calciopoli, Cantona, Super League… |
-| `05-emotional.md` | Tragedies and comebacks: Munich, Superga, Chapecoense, Eriksen, Zambia, Jota… |
-| `06-weird.md` | Weird and funny: Pickles the dog, 149-0, the deliberate own goal, Ali Dia… |
-| `07-transfers.md` | Money and transfers: Neymar 222m, Figo's pig head, Bosman, Coutinho… |
-| `08-derbies.md` | Derbies: Boca–River in Madrid, Old Firm, Milan flares, Souness's flag… |
-| `09-israel.md` | Israeli football: Spiegler 1970, Haifa 3-0 United, Hapoel TA 2002, Paris 1993… |
-| `10-hot-2025-2026.md` | Recent: World Cup 2026 (Spain, Cape Verde, 6-4), Kane's Ballon d'Or, PSG, Arsenal… with sources |
-| `11-did-you-know.md` | 60 short facts for 10–20 s "הידעתם?" videos |
-| `USED.md` | Stories already used in videos (add a row after every video) |
+| `tips-video.md` | The full predictions-video skill (rules, workflow, tool files) |
+| `assets/` | Brand assets used by `tips-video.md` (clover logo; the round badge is reference only) |
+| `stories/INDEX.md` | List of every story with its id (`06-1` = file 06, story 1) |
+| `stories/01-legends.md` | Legends: Messi's napkin, Maradona, Pelé, Zidane, Cruyff, Yashin, Maldini… |
+| `stories/02-comebacks.md` | Comebacks and crazy games: Istanbul 2005, 6-1, 4-0 at Anfield, 7-1, 93:20… |
+| `stories/03-cinderella.md` | Underdogs: Leicester, Greece 2004, Denmark 92, Iceland, Morocco, Wrexham… |
+| `stories/04-scandals.md` | Hand of God, Zidane headbutt, Suárez, Calciopoli, Cantona, Super League… |
+| `stories/05-emotional.md` | Tragedies and comebacks: Munich, Superga, Chapecoense, Eriksen, Zambia, Jota… |
+| `stories/06-weird.md` | Weird and funny: Pickles the dog, 149-0, the deliberate own goal, Ali Dia… |
+| `stories/07-transfers.md` | Money and transfers: Neymar 222m, Figo's pig head, Bosman, Coutinho… |
+| `stories/08-derbies.md` | Derbies: Boca–River in Madrid, Old Firm, Milan flares, Souness's flag… |
+| `stories/09-israel.md` | Israeli football: Spiegler 1970, Haifa 3-0 United, Hapoel TA 2002, Paris 1993… |
+| `stories/10-hot-2025-2026.md` | Recent: World Cup 2026 (Spain, Cape Verde, 6-4), Kane's Ballon d'Or, PSG, Arsenal… with sources |
+| `stories/11-did-you-know.md` | 60 short facts for 10–20 s "הידעתם?" videos |
+| `stories/USED.md` | Stories already used in videos (add a row after every video) |
 
 Each story has: **הוק** (opening line), **הסיפור** (the facts, in order), **שאלה לתגובות** (ending question), sometimes **🎬 צילומים** (which footage to ask the user for) and **⚠️** (a detail to check or a tone note).
 
 ## Fixed rules
 - **Facts only from these files, or checked with a web search that same day.** Never invent numbers, quotes, dates or scorers. A detail marked ⚠️: check it with a web search, or leave it out of the script. Stories in `10-hot-2025-2026.md` are recent: check the main numbers again before the user records.
 - Anecdotes marked "לפי הסיפור" / "לפי דיווחים" stay that way in the voiceover ("לפי הסיפור…") — don't turn a legend into a fact.
-- **TikTok-safe wording** (same as the tips videos): never "הימור/הימורים/יחס/ווינר/טוטו/המלצה/betting". Leicester: "סיכוי אחד ל-5,000", never "יחס".
+- **TikTok-safe wording** (same as the predictions videos): never "הימור/הימורים/יחס/ווינר/טוטו/המלצה/betting". Leicester: "סיכוי אחד ל-5,000", never "יחס".
 - **Tragedies** (`05-emotional.md` and deaths anywhere): calm, respectful tone. Calm hook text ("זה הסיפור הכי עצוב בכדורגל"), **no phonk hit, no pop sounds**, no jokes, no shouting tags in ElevenLabs (use `[calm]`/`[sad]`, not `[excited] [shouting]`). Suggested song: After Dark – Mr.Kitty. Ending: "כתבו 'לזכרם' בתגובות".
-- **Visual style = the tips videos' house style**: same captions (Heebo ExtraBold 80px, ≤3 words per chunk), no zoom on clips, no slow motion, best quality, no logo, sharp energetic first frame, the video ends on the comments CTA. Reuse the tools from the `football-tips-video` skill (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`) — beats are `hook` and `line`; a news/archive photo goes on a beat as `"k":"photo.jpg"`. No `m`/`p` cards (those are for predictions).
+- **Visual style = the predictions videos' house style** (`tips-video.md`): same captions (Heebo ExtraBold 80px, ≤3 words per chunk), no zoom on clips, no slow motion, best quality, no logo, sharp energetic first frame, the video ends on the comments CTA. Reuse the tools from the "Tool files" section of `tips-video.md` (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`) and its setup/run steps — beats are `hook` and `line`; a news/archive photo goes on a beat as `"k":"photo.jpg"`. No `m`/`p` cards (those are for predictions).
 - **Length**: aim for **40–45 s** (≈100–115 words of the user's ElevenLabs voice). Ask before going over 50 s. "הידעתם?" videos: 10–20 s (25–50 words).
 - **Footage**: Claude can't download match footage. Tell the user exactly which clips to bring (the 🎬 line). Never use footage of a different, identifiable team or match as if it were the story; use a neutral shot (crowd, ball, stadium) instead and say so once.
 
@@ -43,7 +52,7 @@ Each story has: **הוק** (opening line), **הסיפור** (the facts, in order
 5. **Payoff** (1 line): the "wow" fact afterwards (record, quote, what happened next).
 6. **CTA** (last beat, nothing after it): the story's question, or "איזה סיפור אתם רוצים שאספר בפעם הבאה? תכתבו בתגובות!" — this one also gives ideas for the next video.
 
-Optional follow line before the climax (like the WhatsApp line in the tips videos): "תשימו עוקב לעוד סיפורים כאלה!" — only if the user wants it.
+Optional follow line before the climax (like the WhatsApp line in the predictions videos): "תשימו עוקב לעוד סיפורים כאלה!" — only if the user wants it.
 
 Write numbers as words the voice says naturally ("שלוש-אפס", "בדקה התשעים ושלוש"); captions can keep digits. `hl` (green) = the key number / name; `hl2` (cyan) = a club or player name.
 
@@ -59,7 +68,7 @@ Write numbers as words the voice says naturally ("שלוש-אפס", "בדקה ה
  {"type":"line","vo":"ואנגליה? זכתה באותו קיץ במונדיאל היחיד שלה עד היום.","hl":"המונדיאל היחיד"},
  {"type":"line","vo":"איזה סיפור אתם רוצים שאספר בפעם הבאה? תכתבו בתגובות!","hl":"תכתבו בתגובות"}]
 ```
-Give the user two copy blocks, as in the tips skill: plain text, and an ElevenLabs version (`[excited] [shouting]` before the hook and `[excited]` before the rest — or `[calm]` for a tragedy).
+Give the user two copy blocks, as in `tips-video.md`: plain text, and an ElevenLabs version (`[excited] [shouting]` before the hook and `[excited]` before the rest — or `[calm]` for a tragedy).
 
 ## Series ideas (offer when the user asks "what to do")
 - **"הקאמבק הכי מטורף"** — `02` (one comeback per video).
@@ -74,3 +83,6 @@ Read `USED.md`, suggest **3 unused stories** from different categories (one with
 
 ## Adding new stories
 Same format (הוק / הסיפור / שאלה לתגובות / 🎬 / ⚠️), into the matching file, next number. Check every number with a web search first; put recent stories in `10-hot-…` with the source links at the bottom. Then regenerate `INDEX.md` (one `### N. title` heading per story).
+
+## Keeping this skill up to date
+`tips-video.md` is a copy of `skills/football-tips-video/SKILL.md` (5.11.2026). When a predictions rule changes, update `tips-video.md` here (and the standalone skill too, if the user still keeps it), then re-zip this folder as `football-stories-video.skill.zip` and tell the user to re-upload it. On claude.ai, uploaded skills are read-only, so new stories and `USED.md` rows only stick in the repo copy.
