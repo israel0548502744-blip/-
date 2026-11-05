@@ -135,6 +135,7 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
   <section aria-labelledby="hPlan">
     <div class="sechead"><h2 id="hPlan">התוכנית: תסריטים מוכנים</h2><small>מעתיקים, מקליטים ב-ElevenLabs ושולחים ל-Claude עם הקטעים</small></div>
     <div class="plan" id="plan"></div>
+    <div class="actions" style="margin-top:10px"><button class="btn ghost" id="planAll"></button></div>
   </section>
 
   <section aria-labelledby="hAnn">
@@ -298,9 +299,15 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
   // ---------- content plan (ready scripts) ----------
   const DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
   const PLAN = CAT.plan || [];
+  let planAll = false;
+  $('planAll').addEventListener('click', () => { planAll = !planAll; renderPlan(); });
   function renderPlan(){
     if (!PLAN.length) { $('plan').innerHTML = '<p class="note">אין כרגע תסריטים מוכנים. בקשו מ-Claude תוכנית לשבוע.</p>'; return; }
-    $('plan').innerHTML = PLAN.map((p, n) => {
+    const near = p => { const diff = Math.round((new Date(p.date + 'T00:00:00') - today) / 864e5); return diff >= -1 && diff <= 7; };
+    const shownN = PLAN.filter(near).length;
+    $('planAll').textContent = planAll ? 'רק השבוע הקרוב' : `כל התוכנית (${PLAN.length} סרטונים)`;
+    $('plan').innerHTML = (shownN || planAll ? '' : '<p class="note">אין סרטונים מתוכננים לשבוע הקרוב. לחצו "כל התוכנית" או בקשו מ-Claude תוכנית חדשה.</p>') + PLAN.map((p, n) => {
+      if (!planAll && !near(p)) return '';
       const d = new Date(p.date + 'T00:00:00'); const diff = Math.round((d - today) / 864e5);
       const done = p.ids.every(id => USED[id]);
       const cls = ['prow', diff < 0 ? 'past' : '', diff === 0 ? 'today' : '', done ? 'done' : ''].join(' ');

@@ -98,4 +98,26 @@ for f in sorted(glob.glob(os.path.join(D, '..', 'scripts', '*.json'))):
             byid[i].setdefault('plan', []).append(sc_['date'])
 out = {'cats': CATS, 'items': items, 'clubs': sorted(clubs), 'plan': plan}
 json.dump(out, open(os.path.join(D, 'catalog.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
+# INDEX.md, regenerated every run so it never drifts from the story files
+LONG = {'01': 'אגדות ושחקני על', '02': 'קאמבקים ומשחקים מטורפים', '03': 'סינדרלה והפתעות', '04': 'שערוריות',
+        '05': 'מרגשים וטרגדיות', '06': 'מוזרים ומצחיקים', '07': 'העברות וכסף', '08': 'דרבים ויריבויות',
+        '09': 'כדורגל ישראלי', '10': 'חם: 2025–2026', '13': '"נחשו מי"'}
+files = {os.path.basename(f)[:2]: os.path.basename(f) for f in glob.glob(os.path.join(D, '[01][0-9]-*.md'))}
+stories = [i for i in items if i['cat'] not in ('11', '13')]
+facts = [i for i in items if i['cat'] == '11']
+quiz = [i for i in items if i['cat'] == '13']
+L = ['# אינדקס הסיפורים', '',
+     'מזהה סיפור = `<קובץ>-<מספר>`, למשל `06-1` = הכלב שמצא את גביע העולם. מה שכבר יצא לסרטון מסומן בדף השליטה: https://claude.ai/artifact/FStHaRy3KgKGVPfBfqVpnR',
+     f'**סה"כ: {len(stories)} סיפורים + {len(facts)} עובדות קצרות + {len(quiz)} חידות "נחשו מי". ל-{sum("date" in i for i in items)} סיפורים יש תאריך מדויק (`CALENDAR.md`). תסריטים מוכנים: {len(plan)} (`../scripts/`).**',
+     '', '(הקובץ נוצר אוטומטית על ידי `tools/build_catalog.py`. לא לערוך ידנית.)', '']
+for k in sorted(CATS):
+    if k == '11':
+        L += [f'## 11 · "הידעתם?" — `{files[k]}`', f'{len(facts)} עובדות קצרות לסרטונים של 10–20 שניות.', '']
+        L += [f'## 12 · לפי קבוצה — `12-clubs.md`', f'עובדות קבועות על {len(clubs)} קבוצות ואילו סיפורים שייכים לכל אחת.', '']
+        continue
+    its = [i for i in items if i['cat'] == k]
+    L.append(f'## {k} · {LONG[k]} ({len(its)}) — `{files[k]}`')
+    L += [f"- `{i['id']}` {i['title']}" for i in its]
+    L.append('')
+open(os.path.join(D, 'INDEX.md'), 'w', encoding='utf-8').write('\n'.join(L))
 print(f"plan {len(plan)}  items {len(items)}  dated {sum('date' in i for i in items)}  clubs {len(clubs)}  missing club ids {missing}")
