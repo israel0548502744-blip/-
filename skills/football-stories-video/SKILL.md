@@ -1,6 +1,6 @@
 ---
 name: "football-stories-video"
-description: "All of the user's vertical TikTok football videos in one skill: (1) the daily predictions video (סרטון תחזיות כדורגל, page יום המזל) built from their clips, match images, slips and voiceover — full rules and tools in tips-video.md; (2) football story videos (סרטון סיפור כדורגל / 'הידעתם?') from a knowledge base of 156 checked stories + 60 quick facts in Hebrew. Use for predictions videos, voiceover scripts, football stories, story ideas, or 'what's the next story'."
+description: "All of the user's vertical TikTok football videos in one skill: (1) the daily predictions video (סרטון תחזיות כדורגל, page יום המזל) built from their clips, match images, slips and voiceover — full rules and tools in tips-video.md; (2) football story videos (סרטון סיפור כדורגל / 'הידעתם?') from a knowledge base of 156 checked stories + 60 quick facts in Hebrew. Use for predictions videos, voiceover scripts, football stories, story ideas, or 'what's the next story'. Story marks and view numbers live on the control page https://claude.ai/artifact/FStHaRy3KgKGVPfBfqVpnR (db collection `used`)."
 ---
 
 # סרטוני כדורגל: תחזיות + סיפורים (Football videos: predictions + stories)
@@ -10,7 +10,9 @@ The user makes vertical TikTok football videos in two formats. Talk to the user 
 | Format | When | Read |
 |---|---|---|
 | **Daily predictions video** (סרטון תחזיות) | The user sends clips, match images, slips, voiceover, or asks for a predictions script / "כמה פגענו" | **`tips-video.md` — read it fully and follow it exactly.** It is the complete football-tips-video skill: fixed rules, house style, workflow, and the tool files (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`). Brand assets are in `assets/`. |
-| **Story video** (סרטון סיפור / "הידעתם?") | The user asks for a football story, story ideas, a story script | This file + `stories/`. The video build uses the same tools from `tips-video.md`. |
+| **Story video** (סרטון סיפור / "הידעתם?" / "נחשו מי") | The user asks for a football story, story ideas, a story script | This file + `stories/`. The video build uses the same tools from `tips-video.md` (they include the story graphics below). |
+
+**After every predictions video**, add one line suggesting a story video about one of that day's clubs (look the clubs up in `stories/12-clubs.md`, skip stories already marked used on the control page).
 
 The rest of this file is about story videos.
 
@@ -31,7 +33,11 @@ The rest of this file is about story videos.
 | `stories/09-israel.md` | Israeli football: Spiegler 1970, Haifa 3-0 United, Hapoel TA 2002, Paris 1993… |
 | `stories/10-hot-2025-2026.md` | Recent: World Cup 2026 (Spain, Cape Verde, 6-4), Kane's Ballon d'Or, PSG, Arsenal… with sources |
 | `stories/11-did-you-know.md` | 60 short facts for 10–20 s "הידעתם?" videos |
-| `stories/USED.md` | Stories already used in videos (add a row after every video) |
+| `stories/12-clubs.md` | Per club: stable facts + the ids of its stories (for matching stories to the day's fixtures) |
+| `stories/13-guess-who.md` | 20 "נחשו מי השחקן" quizzes (clues from hard to easy + answer) |
+| `stories/CALENDAR.md` | Exact date of 111 stories, for "בדיוק היום לפני X שנים" videos |
+| `stories/catalog.json` | Everything above as one JSON (built by `tools/build_catalog.py`); the control page is built from it |
+| `tools/` | `build_catalog.py`, `build_page.py` + `control_page.template.html` (the control page source) |
 
 Each story has: **הוק** (opening line), **הסיפור** (the facts, in order), **שאלה לתגובות** (ending question), sometimes **🎬 צילומים** (which footage to ask the user for) and **⚠️** (a detail to check or a tone note).
 
@@ -40,7 +46,7 @@ Each story has: **הוק** (opening line), **הסיפור** (the facts, in order
 - Anecdotes marked "לפי הסיפור" / "לפי דיווחים" stay that way in the voiceover ("לפי הסיפור…") — don't turn a legend into a fact.
 - **TikTok-safe wording** (same as the predictions videos): never "הימור/הימורים/יחס/ווינר/טוטו/המלצה/betting". Leicester: "סיכוי אחד ל-5,000", never "יחס".
 - **Tragedies** (`05-emotional.md` and deaths anywhere): calm, respectful tone. Calm hook text ("זה הסיפור הכי עצוב בכדורגל"), **no phonk hit, no pop sounds**, no jokes, no shouting tags in ElevenLabs (use `[calm]`/`[sad]`, not `[excited] [shouting]`). Suggested song: After Dark – Mr.Kitty. Ending: "כתבו 'לזכרם' בתגובות".
-- **Visual style = the predictions videos' house style** (`tips-video.md`): same captions (Heebo ExtraBold 80px, ≤3 words per chunk), no zoom on clips, no slow motion, best quality, no logo, sharp energetic first frame, the video ends on the comments CTA. Reuse the tools from the "Tool files" section of `tips-video.md` (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`) and its setup/run steps — beats are `hook` and `line`; a news/archive photo goes on a beat as `"k":"photo.jpg"`. No `m`/`p` cards (those are for predictions).
+- **Visual style = the predictions videos' house style** (`tips-video.md`): same captions (Heebo ExtraBold 80px, ≤3 words per chunk), no zoom on clips, no slow motion, best quality, no logo, sharp energetic first frame, the video ends on the comments CTA. Reuse the tools from the "Tool files" section of `tips-video.md` (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`) and its setup/run steps — beats are `hook` and `line`; a news/archive photo goes on a beat as `"k":"photo.jpg"`. No `m`/`p` cards (those are for predictions). Story graphics: see "Story graphics" below.
 - **Length**: aim for **40–45 s** (≈100–115 words of the user's ElevenLabs voice). Ask before going over 50 s. "הידעתם?" videos: 10–20 s (25–50 words).
 - **Footage**: Claude can't download match footage. Tell the user exactly which clips to bring (the 🎬 line). Never use footage of a different, identifiable team or match as if it were the story; use a neutral shot (crowd, ball, stadium) instead and say so once.
 
@@ -70,19 +76,47 @@ Write numbers as words the voice says naturally ("שלוש-אפס", "בדקה ה
 ```
 Give the user two copy blocks, as in `tips-video.md`: plain text, and an ElevenLabs version (`[excited] [shouting]` before the hook and `[excited]` before the rest — or `[calm]` for a tragedy).
 
+## Story graphics (beat fields, built into overlay.html / build.py)
+Put these on beats in `script.json`; `align.py` carries them into `timeline.json`.
+- `"dt":"1966 · לונדון"` — date/place chip at the top, pops in on that beat (≥2.2 s, soft pop). Use it on the setup beat.
+- `"sc":{"a":"ליברפול","b":"מילאן","ga":0,"gb":3}` — scoreboard at the top. **It stays on screen** from its first beat until a beat sets `"sc":false` (or the video ends), and each new score pops with a sound. Make every score change its own beat ("ג'רארד!" → 1-3, "שמיצר!" → 2-3). Team `a` is on the right. Keep team names short (≤8 letters).
+- `"big":"149-0"` — huge text in the middle of the screen (punch-in + deep impact sound) for the climax number. Never on the same beat as `k` (both sit above the captions).
+- `"calm":true` on the **hook beat** — slow fade, white glow, no punch zoom. For tragedies also run `build.py ... --calm` (no phonk hit, no pops, no effect sounds).
+Tested 5.11.2026 on a 15 s sample (Istanbul 2005): chip, scoreboard 0-0 → 0-3 → 1-3 → 2-3 → 3-3, big "6 דקות", calm hook.
+
+## Formats
+- **Regular story** — the structure above, 40–45 s.
+- **"בדיוק היום לפני X שנים"** — a story whose date (`CALENDAR.md`) is today or in the next days. Hook: "בדיוק היום לפני 19 שנה..." + the story's hook. Check the date with a quick web search first. Round anniversaries (5, 10, 20, 25…) are marked on the control page.
+- **"נחשו מי השחקן"** (`13-guess-who.md`, 20–30 s) — hook "נחשו מי השחקן... ב-4 רמזים!", one beat per clue with `"big":"רמז 1"`…, "יש לכם 3 שניות...", answer beat with a photo (`k`), CTA "באיזה רמז ידעתם? תכתבו בתגובות!".
+- **Two parts** (stories marked `2 חלקים` on the page: `02-1` `02-10` `03-1` `03-11` `05-6` `08-1` `09-3` `10-7`) — part 1 stops right before the climax: "מה קרה אחר כך? חלק 2 כבר בפרופיל, תשימו עוקב!" Part 2 opens with one recap line ("בחלק הקודם: מילאן מובילה שלוש-אפס במחצית…") and goes straight to the climax. Post part 2 within 24 hours.
+- **"הידעתם?" ×3** — three facts from one section of `11-did-you-know.md`, 20–25 s.
+
 ## Series ideas (offer when the user asks "what to do")
-- **"הקאמבק הכי מטורף"** — `02` (one comeback per video).
+- **"הקאמבק הכי מטורף"** — `02` (one comeback per video, with the scoreboard).
 - **"הסיפור שלא ידעתם"** — `06`, `07`.
 - **"הסינדרלה של השבוע"** — `03`, plus `10` (Cape Verde, Curaçao, Paraguay).
 - **"הכדורגל הישראלי"** — `09` (strong for an Israeli audience).
-- **"הידעתם?" ×3** — three facts from one section of `11` in a 20–25 s video.
-- **Story of the day linked to the fixtures**: before a derby/big game, pick a story about those clubs (e.g. Liverpool–United → `08-7`; a Milan game → `08-4`; Barça–Real → `01-7` / `08-9`). This also fits next to the daily predictions video.
+- **"היום בהיסטוריה"** — from the control page's "השבוע בהיסטוריה" strip.
+- **"נחשו מי"** — `13`.
+- **Story of the day linked to the fixtures**: before a derby/big game, pick a story about those clubs from `12-clubs.md` (e.g. Liverpool–United → `08-7`; a Milan game → `08-4`; Barça–Real → `01-7` / `08-9`).
+
+## The control page (חדר הסיפורים) — what's used, and the numbers
+**URL: https://claude.ai/artifact/FStHaRy3KgKGVPfBfqVpnR** (private to the user). It lists every story with filters (topic, club, unused only, has a date, two parts), the "this week in history" strip, a "השתמשתי" button, view/like/comment/share fields per used story, and a "מה עובד" summary (average views per topic, top videos). Marks live in its database, collection `used`, one document per story id: `{date:"YYYY-MM-DD", by:"claude"|"page", title, cat, video?, views?, likes?, comments?, shares?, statsAt?}`.
+- **Before suggesting stories**: read it — `ArtifactData` `list`, url above, collection `used` — and never suggest a used id unless the user asks for a repeat.
+- **After every story video Claude makes** (as soon as the final file is sent): mark it — `ArtifactData` `set`, collection `used`, doc_id = story id, data `{date, by:"claude", title, cat, video:"<file name>"}` (no `if_version` when the document is new; if it exists, read it and pass its `version`). For a "הידעתם ×3" video mark all three facts. The user can also press "השתמשתי" on the page.
+- **Numbers**: the user types views/comments into the page, or sends a TikTok analytics screenshot — then Claude writes them with `ArtifactData` `update` (`views`, `likes`, `comments`, `shares`, `statsAt`, pinned with `if_version`). Once 5+ stories have numbers, read them before suggesting: favor the topics with the best average views/comments and say why in one line.
+- **When stories are added**: run `python3 tools/build_catalog.py`, then `python3 tools/build_page.py pages/stories-control.html` (repo root) and republish to the same URL (`Artifact` publish with `url`; read it first if this conversation hasn't).
+
+## Connected tools (state on 5.11.2026)
+- **Upload-Post** is connected (profile `default`) but **no social account is linked** and the plan is the free one. To get TikTok numbers here and to schedule posts: the user links TikTok / Instagram / YouTube at https://app.upload-post.com/manage-users. Publishing to TikTok needs the Basic plan (https://app.upload-post.com/pricing?plan=basic&interval=monthly&autostart=1); Instagram and YouTube work on the free plan within its monthly cap. Once linked: `list_users`, then `get_analytics` / `get_post_analytics` for views and comments → write them to the control page. Cross-post story videos as Reels/Shorts with the `upload-post:schedule-campaign` skill — only when the user asks for that post; the same wording rules apply on every platform.
+- **vidIQ** is connected, with **no YouTube channel and 0 credits** (150 renew on 7.11.2026). It reads YouTube channels and Instagram accounts, not TikTok. Useful for trend research: `vidiq_instagram_tiktok_outlier_search` (e.g. "football story", "סיפורי כדורגל", "did you know football") to see which hooks and topics are over-performing now. Check `vidiq_balance` first and tell the user the credit cost before spending.
+- No connector reads TikTok directly; the fallback is always the user's screenshot or typing the numbers into the page.
 
 ## When the user asks "what's the next story?"
-Read `USED.md`, suggest **3 unused stories** from different categories (one with a strong number hook, one emotional or Israeli, one tied to this week's fixtures), each with its hook line, and let the user pick. After the video, add a row to `USED.md`.
+Read the control page's `used` collection, suggest **3 unused stories** from different formats/categories (one with a strong number hook, one Israeli or emotional, one tied to this week's fixtures or a date in the next days), each with its hook line and why (numbers, date, fixture), and let the user pick.
 
 ## Adding new stories
-Same format (הוק / הסיפור / שאלה לתגובות / 🎬 / ⚠️), into the matching file, next number. Check every number with a web search first; put recent stories in `10-hot-…` with the source links at the bottom. Then regenerate `INDEX.md` (one `### N. title` heading per story).
+Same format (הוק / הסיפור / שאלה לתגובות / 🎬 / ⚠️), into the matching file, next number. Check every number with a web search first; put recent stories in `10-hot-…` with the source links at the bottom; add an exact date to `CALENDAR.md` and the clubs to `12-clubs.md`. Then regenerate `INDEX.md`, `catalog.json` and the control page (see above).
 
 ## Keeping this skill up to date
-`tips-video.md` is a copy of `skills/football-tips-video/SKILL.md` (5.11.2026). When a predictions rule changes, update `tips-video.md` here (and the standalone skill too, if the user still keeps it), then re-zip this folder as `football-stories-video.skill.zip` and tell the user to re-upload it. On claude.ai, uploaded skills are read-only, so new stories and `USED.md` rows only stick in the repo copy.
+`tips-video.md` started as a copy of `skills/football-tips-video/SKILL.md` (5.11.2026) and is now the master: its overlay.html and build.py also have the story graphics. When a predictions rule changes, update `tips-video.md` here, then re-zip this folder as `football-stories-video.skill.zip` (repo root) and tell the user to re-upload it. On claude.ai, uploaded skills are read-only: what changes between videos (used marks, numbers) lives on the control page, which every conversation can read and write.

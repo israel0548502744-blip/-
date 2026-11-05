@@ -1,0 +1,330 @@
+<title>חדר הסיפורים</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a night-pitch control room — header with live counts, "this week in history" strip, sticky filter bar, card grid, then "what works" stats */
+:root{
+  --bg:#eef3ee; --surface:#ffffff; --surface2:#e2ebe3; --line:#c9d8cc;
+  --fg:#0c2216; --muted:#53705e; --accent:#0f8a48; --accent-ink:#ffffff; --accent-soft:#d3f1df;
+  --warn:#9a5b00; --warn-soft:#fbe9c9; --calm:#5b5f86; --calm-soft:#e3e4f3; --used:#0f8a48;
+  --font-display:"Heebo","Rubik","Arial Hebrew",Arial,sans-serif;
+  --font-body:"Heebo","Arial Hebrew",Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#06170e; --surface:#0b2417; --surface2:#103020; --line:#1d4230;
+  --fg:#e7f4ea; --muted:#8fb39c; --accent:#38e07b; --accent-ink:#06301a; --accent-soft:#11402a;
+  --warn:#f2b84b; --warn-soft:#3a2c10; --calm:#b9bdf0; --calm-soft:#24264a; --used:#38e07b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#06170e; --surface:#0b2417; --surface2:#103020; --line:#1d4230;
+  --fg:#e7f4ea; --muted:#8fb39c; --accent:#38e07b; --accent-ink:#06301a; --accent-soft:#11402a;
+  --warn:#f2b84b; --warn-soft:#3a2c10; --calm:#b9bdf0; --calm-soft:#24264a; --used:#38e07b; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.55}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{direction:rtl;max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;padding-block:8px 18px;border-bottom:2px solid var(--line)}
+.top h1{font-size:clamp(30px,6vw,46px);font-weight:900;letter-spacing:-.5px;line-height:1}
+.top h1 em{font-style:normal;color:var(--accent)}
+.top p{margin:6px 0 0;color:var(--muted)}
+.counts{display:flex;gap:10px;flex-wrap:wrap}
+.count{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 14px;min-width:92px}
+.count b{display:block;font-family:var(--font-display);font-size:26px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums}
+.count span{font-size:12px;color:var(--muted);letter-spacing:.3px}
+.status{font-size:13px;color:var(--muted);margin-top:8px}
+.status.err{color:var(--warn)}
+section{margin-top:26px}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.sechead h2{font-size:21px;font-weight:800}
+.sechead small{color:var(--muted)}
+.strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+.ann{flex:0 0 250px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;cursor:pointer;text-align:right;color:var(--fg);font:inherit}
+.ann:hover{border-color:var(--accent)}
+.ann .when{font-family:var(--font-display);font-weight:800;color:var(--accent);font-size:15px}
+.ann .yrs{font-family:var(--font-display);font-weight:900;font-size:30px;line-height:1}
+.ann .yrs small{font-size:14px;font-weight:700;color:var(--muted)}
+.ann .t{font-weight:700;line-height:1.3}
+.ann.round{border:2px solid var(--accent)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{flex:1 1 220px;min-width:0;font:inherit;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+select{font:inherit;padding:9px 10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);max-width:100%}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:none;font:inherit;font-weight:700;font-size:14px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.chip .n{display:inline-block;unicode-bidi:isolate;font-weight:500;opacity:.7;margin-inline-start:7px;font-variant-numeric:tabular-nums}
+.tog{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--fg);cursor:pointer;user-select:none}
+.tog input{accent-color:var(--accent);width:16px;height:16px}
+.shown{font-size:13px;color:var(--muted);margin-inline-start:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;margin-top:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card.is-used{border-color:var(--used);box-shadow:inset 0 0 0 1px var(--used)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px}
+.id{font-family:var(--font-mono);font-size:12px;background:var(--surface2);border-radius:6px;padding:2px 7px;color:var(--muted)}
+.pill{border-radius:999px;padding:2px 9px;font-weight:700;background:var(--surface2);color:var(--muted)}
+.pill.cat{background:var(--accent-soft);color:var(--fg)}
+.pill.calm{background:var(--calm-soft);color:var(--calm)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.date{font-variant-numeric:tabular-nums}
+.card h3{font-size:18px;font-weight:800;line-height:1.3}
+.hook{font-family:var(--font-display);font-weight:800;font-size:19px;line-height:1.35;margin:0;padding-inline-start:12px;border-inline-start:4px solid var(--accent)}
+.qline{margin:0;font-size:14px;color:var(--muted)}
+.qline b{color:var(--fg);font-weight:700}
+details{border-top:1px dashed var(--line);padding-top:6px}
+summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--accent)}
+details p{margin:6px 0 0;font-size:14.5px}
+details .lab{font-weight:800}
+.warnbox{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:6px 10px;font-size:13.5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:4px}
+button.btn{font:inherit;font-weight:700;font-size:14px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);cursor:pointer}
+button.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.btn.ghost{background:transparent}
+button.btn:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visible,.ann:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.usedbox{background:var(--accent-soft);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.usedbox .done{font-weight:800}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.stats label{display:flex;flex-direction:column;font-size:11.5px;color:var(--muted);gap:2px}
+.stats input{font:inherit;font-size:14px;width:100%;min-width:0;padding:6px 7px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font-variant-numeric:tabular-nums;direction:ltr;text-align:right}
+.empty{padding:30px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px;margin-top:14px}
+.works{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;min-width:0}
+.panel h3{font-size:16px;margin-bottom:8px}
+.brow{display:grid;grid-template-columns:90px minmax(0,1fr) 70px;gap:8px;align-items:center;font-size:14px;padding:4px 0}
+.brow .track{height:12px;background:var(--surface2);border-radius:6px;overflow:hidden}
+.brow .fill{height:100%;background:var(--accent);border-radius:6px}
+.brow .v{font-variant-numeric:tabular-nums;text-align:left;font-weight:700}
+.toplist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.toplist li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.toplist li span:last-child{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.note{color:var(--muted);font-size:14px;margin:0}
+@media (max-width:720px){.works{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.counts{width:100%}.count{flex:1;min-width:0}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+
+<div class="wrap" lang="he">
+  <header class="top">
+    <div>
+      <h1>חדר <em>הסיפורים</em></h1>
+      <p>יום המזל · כל סיפורי הכדורגל, העובדות והחידות לסרטונים. מסמנים כאן מה כבר יצא, ו-Claude רואה את זה בכל שיחה.</p>
+      <div class="status" id="status" role="status">טוען סימונים…</div>
+    </div>
+    <div class="counts">
+      <div class="count"><b id="cTotal">0</b><span>במאגר</span></div>
+      <div class="count"><b id="cFree">0</b><span>עוד לא השתמשנו</span></div>
+      <div class="count"><b id="cUsed">0</b><span>כבר יצאו</span></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="hAnn">
+    <div class="sechead"><h2 id="hAnn">השבוע בהיסטוריה</h2><small>סרטון "בדיוק היום לפני X שנים" · לבדוק תאריך לפני הקלטה</small></div>
+    <div class="strip" id="strip"></div>
+  </section>
+
+  <section aria-labelledby="hList">
+    <div class="sechead"><h2 id="hList">כל הסיפורים</h2></div>
+    <div class="bar">
+      <div class="row">
+        <input class="search" id="q" type="search" placeholder="חיפוש: שחקן, קבוצה, מילה מההוק…" aria-label="חיפוש">
+        <select id="club" aria-label="קבוצה"><option value="">כל הקבוצות</option></select>
+      </div>
+      <div class="chips" id="chips" role="toolbar" aria-label="נושא"></div>
+      <div class="row">
+        <label class="tog"><input type="checkbox" id="fUnused"> רק מה שעוד לא יצא</label>
+        <label class="tog"><input type="checkbox" id="fDated"> יש תאריך</label>
+        <label class="tog"><input type="checkbox" id="fTwo"> מתאים לשני חלקים</label>
+        <span class="shown" id="shown"></span>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden>אין סיפורים שמתאימים לסינון. נסו לנקות את החיפוש או לבחור "הכל".</div>
+  </section>
+
+  <section aria-labelledby="hWorks">
+    <div class="sechead"><h2 id="hWorks">מה עובד</h2><small>לפי הצפיות והתגובות שמילאתם בסיפורים שיצאו</small></div>
+    <div id="works"></div>
+  </section>
+</div>
+
+<script type="application/json" id="catalog">/*CATALOG*/</script>
+<script>
+(function(){
+  const CAT = JSON.parse(document.getElementById('catalog').textContent);
+  const ITEMS = CAT.items, CATS = CAT.cats, BYID = {};
+  ITEMS.forEach(i => BYID[i.id] = i);
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const today = new Date(); today.setHours(0,0,0,0);
+  const iso = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const heDate = s => { const [y,m,d] = s.split('-'); return `${+d}.${+m}.${y}`; };
+  const fmt = n => n == null ? '—' : Number(n).toLocaleString('he-IL');
+
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem('stories-filters') || '{}'); } catch(e) {}
+  const S = { cat: saved.cat || 'all', club: saved.club || '', q: '', unused: !!saved.unused, dated: !!saved.dated, two: !!saved.two };
+  let USED = {}, db = null, canWrite = true, loaded = false;
+  const busy = new Set(), confirmUndo = new Set(), openD = new Set();
+  const saveFilters = () => { try { localStorage.setItem('stories-filters', JSON.stringify({cat:S.cat, club:S.club, unused:S.unused, dated:S.dated, two:S.two})); } catch(e) {} };
+
+  // ---------- filters ----------
+  const counts = {}; ITEMS.forEach(i => counts[i.cat] = (counts[i.cat] || 0) + 1);
+  $('chips').innerHTML = [['all','הכל',ITEMS.length], ...Object.keys(CATS).map(k => [k, CATS[k], counts[k] || 0])]
+    .map(([k,l,n]) => `<button class="chip" data-cat="${k}" aria-pressed="${S.cat===k}">${esc(l)}<span class="n">${n}</span></button>`).join('');
+  $('club').innerHTML += CAT.clubs.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  $('club').value = S.club; $('fUnused').checked = S.unused; $('fDated').checked = S.dated; $('fTwo').checked = S.two;
+  $('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; S.cat = b.dataset.cat;
+    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c === b)); saveFilters(); renderGrid(); });
+  $('q').addEventListener('input', e => { S.q = e.target.value.trim(); renderGrid(); });
+  $('club').addEventListener('change', e => { S.club = e.target.value; saveFilters(); renderGrid(); });
+  [['fUnused','unused'],['fDated','dated'],['fTwo','two']].forEach(([id,k]) => $(id).addEventListener('change', e => { S[k] = e.target.checked; saveFilters(); renderGrid(); }));
+
+  function matches(i){
+    if (S.cat !== 'all' && i.cat !== S.cat) return false;
+    if (S.club && !(i.clubs || []).includes(S.club)) return false;
+    if (S.unused && USED[i.id]) return false;
+    if (S.dated && !i.date) return false;
+    if (S.two && !i.two) return false;
+    if (S.q) { const hay = [i.id, i.title, i.hook, i.story, i.clues, i.answer, (i.clubs||[]).join(' '), CATS[i.cat]].join(' ');
+      if (!hay.includes(S.q)) return false; }
+    return true;
+  }
+
+  // ---------- cards ----------
+  function card(i){
+    const u = USED[i.id];
+    const pills = [`<span class="id">${i.id}</span>`, `<span class="pill cat">${esc(CATS[i.cat])}</span>`];
+    if (i.date) pills.push(`<span class="pill date">${heDate(i.date)}</span>`);
+    if (i.two) pills.push('<span class="pill">2 חלקים</span>');
+    if (i.calm) pills.push('<span class="pill calm">טון שקט</span>');
+    if (i.warn && !i.calm) pills.push('<span class="pill warn">לבדוק פרט</span>');
+    const title = i.cat === '11' ? 'הידעתם · ' + i.title : i.title;
+    let body = '';
+    if (i.story) body += `<p>${esc(i.story)}</p>`;
+    if (i.clues) body += `<p><span class="lab">רמזים: </span>${esc(i.clues)}</p><p><span class="lab">תשובה: </span>${esc(i.answer)}</p>`;
+    if (i.footage) body += `<p><span class="lab">צילומים: </span>${esc(i.footage)}</p>`;
+    if (i.clubs) body += `<p><span class="lab">קבוצות: </span>${esc(i.clubs.join(', '))}</p>`;
+    if (i.warn) body += `<p class="warnbox">${esc(i.warn)}</p>`;
+    const details = body ? `<details data-id="${i.id}"${openD.has(i.id) ? ' open' : ''}><summary>${i.clues ? 'הרמזים והתשובה' : 'הסיפור המלא'}</summary>${body}</details>` : '';
+    let used = '';
+    if (u) {
+      const who = u.by === 'claude' ? 'Claude' : 'מהדף';
+      const f = (k, l) => `<label>${l}<input type="number" min="0" inputmode="numeric" id="st-${k}-${i.id}" value="${u[k] ?? ''}"></label>`;
+      used = `<div class="usedbox"><div class="done">✓ יצא לסרטון ב-${heDate(u.date)} · ${who}${u.video ? ' · ' + esc(u.video) : ''}</div>
+        <div class="stats">${f('views','צפיות')}${f('likes','לייקים')}${f('comments','תגובות')}${f('shares','שיתופים')}</div>
+        <div class="actions"><button class="btn primary" data-act="stats" data-id="${i.id}" ${busy.has(i.id)||!canWrite?'disabled':''}>שמירת נתונים</button>
+        <button class="btn ghost" data-act="undo" data-id="${i.id}" ${busy.has(i.id)||!canWrite?'disabled':''}>${confirmUndo.has(i.id) ? 'בטוח? לחצו שוב לביטול' : 'ביטול הסימון'}</button></div></div>`;
+    }
+    const markBtn = u ? '' : `<button class="btn primary" data-act="use" data-id="${i.id}" ${busy.has(i.id)||!canWrite||!db?'disabled':''}>השתמשתי</button>`;
+    return `<article class="card${u ? ' is-used' : ''}" id="card-${i.id}"><div class="meta">${pills.join('')}</div>
+      <h3>${esc(title)}</h3><p class="hook">${esc(i.hook)}</p>
+      ${i.q ? `<p class="qline"><b>לתגובות:</b> ${esc(i.q)}</p>` : ''}
+      ${details}${used}
+      <div class="actions"><button class="btn" data-act="copy" data-id="${i.id}">העתקת ההוק</button>${markBtn}</div></article>`;
+  }
+  $('grid').addEventListener('toggle', e => { const d = e.target; if (d.tagName !== 'DETAILS') return; d.open ? openD.add(d.dataset.id) : openD.delete(d.dataset.id); }, true);
+  function renderGrid(){
+    const list = ITEMS.filter(matches);
+    $('grid').innerHTML = list.map(card).join('');
+    $('empty').hidden = list.length > 0;
+    $('shown').textContent = `מוצגים ${list.length} מתוך ${ITEMS.length}`;
+  }
+  function renderCounts(){
+    const n = Object.keys(USED).filter(k => BYID[k]).length;
+    $('cTotal').textContent = ITEMS.length; $('cUsed').textContent = n; $('cFree').textContent = ITEMS.length - n;
+  }
+
+  // ---------- this week in history ----------
+  function renderStrip(){
+    const rows = [];
+    ITEMS.filter(i => i.date).forEach(i => {
+      const [y,m,d] = i.date.split('-').map(Number);
+      let next = new Date(today.getFullYear(), m-1, d);
+      if (next < today) next = new Date(today.getFullYear()+1, m-1, d);
+      const days = Math.round((next - today) / 864e5), yrs = next.getFullYear() - y;
+      if (days <= 7 && yrs > 0) rows.push({i, days, yrs});
+    });
+    rows.sort((a,b) => a.days - b.days || b.yrs - a.yrs);
+    if (!rows.length) { $('strip').innerHTML = '<p class="note">אין ימי שנה בשבוע הקרוב.</p>'; return; }
+    $('strip').innerHTML = rows.map(({i,days,yrs}) => {
+      const when = days === 0 ? 'היום' : days === 1 ? 'מחר' : `בעוד ${days} ימים`;
+      const round = yrs % 5 === 0;
+      return `<button class="ann${round ? ' round' : ''}" data-jump="${i.id}"><span class="when">${when} · ${heDate(i.date).replace(/\.\d{4}$/, '')}</span>
+        <span class="yrs">${yrs} <small>שנה${round ? ' · יום שנה עגול' : ''}</small></span><span class="t">${esc(i.title)}</span>
+        <span class="pill${USED[i.id] ? ' cat' : ''}">${USED[i.id] ? 'כבר יצא' : esc(CATS[i.cat])}</span></button>`;
+    }).join('');
+  }
+  $('strip').addEventListener('click', e => { const b = e.target.closest('[data-jump]'); if (!b) return;
+    S.cat = 'all'; S.club = ''; S.q = b.dataset.jump; S.unused = S.dated = S.two = false;
+    $('q').value = S.q; $('club').value = ''; ['fUnused','fDated','fTwo'].forEach(id => $(id).checked = false);
+    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c.dataset.cat === 'all'));
+    renderGrid(); const c = $('card-' + S.q); if (c) { c.scrollIntoView({block:'center'}); openD.add(S.q); c.querySelector('details')?.setAttribute('open',''); } });
+
+  // ---------- what works ----------
+  function renderWorks(){
+    const done = Object.entries(USED).filter(([k,u]) => BYID[k] && u.views != null && u.views !== '');
+    if (!done.length) { $('works').innerHTML = '<p class="note">אחרי שתמלאו צפיות ותגובות בסיפורים שכבר יצאו (בכרטיס של הסיפור), כאן יופיע איזה סוג סיפור הכי עובד. אפשר גם לשלוח ל-Claude צילום מסך של הנתונים מטיקטוק והוא ימלא.</p>'; return; }
+    const g = {};
+    done.forEach(([k,u]) => { const c = BYID[k].cat; (g[c] = g[c] || {n:0, v:0, c:0}); g[c].n++; g[c].v += +u.views || 0; g[c].c += +u.comments || 0; });
+    const rows = Object.entries(g).map(([c,x]) => ({c, n:x.n, av:x.v/x.n, ac:x.c/x.n})).sort((a,b) => b.av - a.av);
+    const max = Math.max(...rows.map(r => r.av), 1);
+    const top = done.map(([k,u]) => ({k, v:+u.views||0, c:+u.comments||0})).sort((a,b) => b.v - a.v).slice(0,5);
+    $('works').innerHTML = `<div class="works"><div class="panel"><h3>ממוצע צפיות לפי נושא</h3>
+      ${rows.map(r => `<div class="brow"><span>${esc(CATS[r.c])} <small>(${r.n})</small></span><div class="track"><div class="fill" style="width:${(r.av/max*100).toFixed(1)}%"></div></div><span class="v">${fmt(Math.round(r.av))}</span></div>`).join('')}
+      <p class="note">ממוצע תגובות: ${rows.map(r => `${esc(CATS[r.c])} ${fmt(Math.round(r.ac))}`).join(' · ')}</p></div>
+      <div class="panel"><h3>הסרטונים הכי נצפים</h3><ol class="toplist">${top.map(t => `<li><span>${esc(BYID[t.k].title)}</span><span>${fmt(t.v)}</span></li>`).join('')}</ol></div></div>`;
+  }
+
+  function renderAll(){ renderCounts(); renderStrip(); renderGrid(); renderWorks(); }
+
+  // ---------- actions ----------
+  $('grid').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const id = b.dataset.id, act = b.dataset.act, i = BYID[id];
+    if (act === 'copy') {
+      try { await navigator.clipboard.writeText(i.hook); b.textContent = 'הועתק'; }
+      catch (err) { const h = b.closest('.card').querySelector('.hook'); const r = document.createRange(); r.selectNodeContents(h);
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent = 'סומן, העתיקו ידנית'; }
+      setTimeout(() => { b.textContent = 'העתקת ההוק'; }, 1600); return;
+    }
+    if (!db || !canWrite || busy.has(id)) return;
+    const ref = db.collection('used').doc(id);
+    if (act === 'undo' && !confirmUndo.has(id)) { confirmUndo.add(id); renderGrid(); setTimeout(() => { confirmUndo.delete(id); renderGrid(); }, 4000); return; }
+    busy.add(id); renderGrid();
+    try {
+      if (act === 'use') await ref.set({ date: iso(new Date()), by: 'page', title: i.title, cat: i.cat });
+      else if (act === 'undo') { confirmUndo.delete(id); await ref.delete(); }
+      else if (act === 'stats') {
+        const num = k => { const v = $('st-'+k+'-'+id).value.trim(); return v === '' ? null : Math.max(0, Math.round(+v)); };
+        await ref.update({ views: num('views'), likes: num('likes'), comments: num('comments'), shares: num('shares'), statsAt: iso(new Date()) });
+        setStatus('הנתונים נשמרו.');
+      }
+    } catch (err) {
+      if (err && err.code === 'invalid_argument') { canWrite = false; setStatus('אין לך הרשאה לשמור בדף הזה. אפשר רק לצפות.', true); }
+      else if (err && err.code === 'quota_exceeded') setStatus('המאגר מלא. צריך למחוק סימונים ישנים.', true);
+      else setStatus('השמירה נכשלה. נסו שוב בעוד רגע.', true);
+    } finally { busy.delete(id); renderAll(); }
+  });
+  function setStatus(t, err){ const s = $('status'); s.textContent = t; s.classList.toggle('err', !!err); }
+
+  renderAll();
+
+  // ---------- shared marks (db) ----------
+  (async () => {
+    const timer = setTimeout(() => { if (!loaded) setStatus('הסימונים עוד לא נטענו. ייתכן שאין חיבור; מה שמוצג אולי לא מעודכן.', true); }, 10000);
+    try {
+      const [d, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+      if (!d) { clearTimeout(timer); setStatus('בתצוגה הזו אי אפשר לשמור סימונים. פתחו את הדף ב-claude.ai כשאתם מחוברים.', true); return; }
+      db = d;
+      if (user) { try { const w = await user.can('data.write'); if (w === false) { canWrite = false; } } catch(e) {} }
+      db.collection('used').onSnapshot(snap => {
+        const next = {}; snap.docs.forEach(doc => { if (doc.exists) next[doc.id] = doc.data(); });
+        USED = next;
+        if (!snap.metadata.fromCache) { loaded = true; clearTimeout(timer);
+          setStatus(canWrite ? 'מחובר · הסימונים נשמרים לכולם ו-Claude רואה אותם.' : 'מחובר · תצוגה בלבד.'); }
+        renderAll();
+      }, err => { clearTimeout(timer); setStatus('החיבור לסימונים נותק. רעננו את הדף מאוחר יותר.', true); });
+    } catch (e) { clearTimeout(timer); setStatus('בתצוגה הזו אי אפשר לשמור סימונים.', true); }
+  })();
+})();
+</script>

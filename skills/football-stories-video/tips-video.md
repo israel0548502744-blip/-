@@ -237,6 +237,20 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .pred .tag{display:inline-block;background:#38e07b;color:#06301a;font-weight:900;font-size:36px;padding:4px 22px;border-radius:30px;margin-bottom:14px}
 .pred .mt{font-weight:700;font-size:40px;opacity:.9;margin-bottom:8px}
 .pred .pk{font-weight:900;font-size:54px;line-height:1.15;color:#38e07b}
+.hook.calm{-webkit-text-stroke:10px #000;text-shadow:0 0 30px rgba(255,255,255,.35),0 10px 30px rgba(0,0,0,.6)}
+/* story graphics: dt = date/place chip, sc = scoreboard, big = huge number/word (story videos only) */
+.chip{position:absolute;left:0;right:0;top:300px;display:flex;justify-content:center;transform-origin:50% 50%}
+.chip span{background:rgba(6,22,14,.9);border:4px solid #38e07b;border-radius:60px;padding:12px 44px;font-weight:800;font-size:56px;color:#fff;white-space:nowrap;
+  box-shadow:0 0 30px rgba(56,224,123,.45),0 18px 40px rgba(0,0,0,.55)}
+.sb{position:absolute;left:60px;right:60px;top:270px;display:flex;justify-content:center;transform-origin:50% 50%;filter:drop-shadow(0 18px 40px rgba(0,0,0,.6))}
+.sb .tm{flex:1;min-width:0;background:rgba(6,22,14,.94);color:#fff;font-weight:800;font-size:52px;display:flex;align-items:center;justify-content:center;padding:16px 18px;white-space:nowrap;overflow:hidden}
+.sb .tm.a{border-radius:0 26px 26px 0}.sb .tm.b{border-radius:26px 0 0 26px}
+.sb .g{background:#38e07b;color:#06301a;font-weight:900;font-size:86px;line-height:1;width:118px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.sb .g span{display:inline-block;transform-origin:50% 50%}
+.sb .ds{background:#0b3a22;color:#38e07b;font-weight:900;font-size:60px;width:34px;display:flex;align-items:center;justify-content:center}
+.big{position:absolute;left:30px;right:30px;top:450px;display:flex;justify-content:center;font-weight:900;font-size:230px;line-height:1.05;color:#fff;
+  -webkit-text-stroke:12px #000;paint-order:stroke fill;text-shadow:0 0 50px rgba(56,224,123,.8),0 12px 30px rgba(0,0,0,.6);white-space:nowrap;transform-origin:50% 50%}
+.big .bi{display:inline-block;unicode-bidi:plaintext}
 .wm{position:absolute;right:42px;top:78px;width:124px;height:124px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .logo{position:absolute;left:300px;width:480px;top:370px;transform-origin:50% 50%;filter:drop-shadow(0 0 40px rgba(56,224,123,.65)) drop-shadow(0 20px 40px rgba(0,0,0,.6))}
 .wa{position:absolute;left:80px;right:80px;top:560px;background:#25d366;border-radius:40px;padding:34px 40px;display:flex;align-items:center;gap:30px;
@@ -251,7 +265,7 @@ const stage=document.getElementById('stage');
 function pop(p){ // 0..1 -> scale with overshoot
   if(p>=1)return 1; if(p<=0)return .55; const s=1.70158*1.3,x=p-1; return .55+.45*(1+(s+1)*x*x*x+s*x*x)}
 let CH=[];let WA_SUB="הקישור בביו";
-function setTL(tl){TL=tl;CH=[];
+function setTL(tl){TL=tl;CH=[];let cur=null;TL.forEach(b=>{if('sc' in b)cur=b.sc||null;b._sc=cur});
   TL.forEach((b,bi)=>{if(bi===0)return;(b.phrases||[{words:b.words,end:b.end}]).forEach(ph=>{
     const ws=ph.words,n=Math.ceil(ws.length/3),size=Math.ceil(ws.length/n);   // balanced chunks of <=3 words
     for(let i=0;i<ws.length;i+=size){const part=ws.slice(i,i+size);const last=i+size>=ws.length;
@@ -259,7 +273,9 @@ function setTL(tl){TL=tl;CH=[];
 function render(t){
   let html='',key='';
   const hb=TL[0];
-  if(t<hb.end+0.05){const p=Math.min(1,t/0.42);const sc=p<1?2.4-1.4*(1-Math.pow(1-p,3)):1;const sc2=p<1?sc:(1+0.03*Math.sin((t-0.42)*6));
+  if(t<hb.end+0.05&&hb.calm){const o=Math.min(1,t/0.8);   // calm hook (tragedy stories): slow fade, no punch zoom
+    html+=`<div class="hook calm" style="opacity:${o.toFixed(2)}">${hb.vo}</div>`;key+='h'+o.toFixed(2)}
+  else if(t<hb.end+0.05){const p=Math.min(1,t/0.42);const sc=p<1?2.4-1.4*(1-Math.pow(1-p,3)):1;const sc2=p<1?sc:(1+0.03*Math.sin((t-0.42)*6));
     html+=`<div class="hook" style="transform:scale(${sc2.toFixed(3)});opacity:${Math.min(1,p*2.5).toFixed(2)}">${hb.vo}</div>`;key+='h'+sc2.toFixed(3)}
   for(const b of TL){
     if(b.type==='hook')continue;
@@ -272,6 +288,18 @@ function render(t){
       // b.p = prediction card {match, pick} (no odds/stake); b.s = slip screenshot (legacy)
       const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div></div>`:`<img src="img/${b.s}">`;
       html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip">${inner}</div></div>`;key+='s'+(b.s||b.p.pick)+sc.toFixed(3)}}
+    // story graphics. dt: "1966 · לונדון" chip; big: "149-0" huge text; sc: {"a":"ליברפול","b":"מילאן","ga":0,"gb":3}
+    if(b.dt){const s=b.start,e=Math.max(b.end,s+2.2);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
+      html+=`<div class="chip" style="transform:scale(${sc.toFixed(3)})"><span>${b.dt}</span></div>`;key+='d'+b.dt+sc.toFixed(3)}}
+    if(b.big){const i=TL.indexOf(b),s=b.start,e=TL[i+1]?Math.min(b.end+0.2,TL[i+1].start):b.end+0.5;if(t>=s&&t<e){const p=Math.min(1,(t-s)/0.3);const sc=p<1?2.0-(1-Math.pow(1-p,3)):1+0.025*Math.sin((t-s-0.3)*6);
+      html+=`<div class="big" id="big" style="transform:scale(${sc.toFixed(3)});opacity:${Math.min(1,p*2).toFixed(2)}"><span class="bi">${b.big}</span></div>`;key+='B'+b.big+sc.toFixed(3)}}
+    // scoreboard stays from its first beat until a beat sets "sc": false (or the end); each new score pops
+    if(b._sc){const i=TL.indexOf(b),nx=TL[i+1],pv=TL[i-1],ps=pv&&pv._sc;const s=b.start,e=nx?(nx._sc?nx.start:b.end+0.4):b.end+0.7;
+      if(t>=s&&t<e){const same=ps&&ps.a===b._sc.a&&ps.b===b._sc.b;const sc=same?1:pop((t-s)/0.35);
+        const pz=(v,o)=>{if(!same||o===v)return 1;const q=Math.min(1,(t-s)/0.3);return q<1?1+0.9*(1-q)*(1-q):1};
+        const za=pz(b._sc.ga,ps&&ps.ga),zb=pz(b._sc.gb,ps&&ps.gb);
+        html+=`<div class="sb" style="transform:scale(${sc.toFixed(3)})"><div class="tm a">${b._sc.a}</div><div class="g"><span style="transform:scale(${za.toFixed(3)})">${b._sc.ga}</span></div><div class="ds">-</div><div class="g"><span style="transform:scale(${zb.toFixed(3)})">${b._sc.gb}</span></div><div class="tm b">${b._sc.b}</div></div>`;
+        key+='S'+b._sc.ga+'_'+b._sc.gb+sc.toFixed(3)+za.toFixed(3)+zb.toFixed(3)}}
     if(b.logo){const s=b.start;if(t>=s){const sc=pop((t-s)/0.4);const br=1+0.025*Math.sin((t-s)*5);
       html+=`<img class="logo" src="img/logo.png" style="transform:scale(${(sc*br).toFixed(3)})">`;key+='L'+(sc*br).toFixed(3)}}
     if(b.wa){const s=b.start+0.15,e=b.end;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
@@ -289,6 +317,7 @@ function render(t){
       html+=`<div class="cap" style="opacity:${o.toFixed(2)}"><div class="ln" id="cap">${sp}</div></div>`;key+='c'+ci+'_'+rk}}
   stage.innerHTML=html;
   const cap=document.getElementById('cap');if(cap){const w=cap.scrollWidth;if(w>940)cap.style.transform=`scale(${(940/w).toFixed(3)})`}
+  const bg=document.getElementById('big');if(bg){const w=bg.firstChild.scrollWidth;if(w>1000)bg.firstChild.style.transform=`scale(${(1000/w).toFixed(3)})`}
   return key}
 </script></body></html>
 ```
@@ -304,6 +333,7 @@ pieces, the last piece plays slightly slower to fill (keep it under ~5% by picki
 import json, subprocess, os, argparse
 ap=argparse.ArgumentParser(); ap.add_argument('proj'); ap.add_argument('out'); ap.add_argument('--music'); ap.add_argument('--mvol',type=float,default=0.21)
 ap.add_argument('--mstart',type=float,default=0.0); ap.add_argument('--skipbase',action='store_true'); ap.add_argument('--nostab',action='store_true')
+ap.add_argument('--calm',action='store_true')   # tragedy stories: no phonk hit, no pops, no effect sounds
 a=ap.parse_args(); P=os.path.abspath(a.proj)+'/'; T=os.path.dirname(os.path.abspath(__file__))+'/'
 os.makedirs(P+'seg',exist_ok=True)
 TL=json.load(open(P+'timeline.json')); PL=json.load(open(P+'plan.json'))
@@ -339,7 +369,13 @@ if not a.skipbase:
   run(['ffmpeg','-y','-f','concat','-safe','0','-i',P+'seg/list.txt','-c','copy',P+'seg/base.mp4'])
 print('shots',[(os.path.basename(s)[:12],ss,round(d,2),round(f,3)) for s,ss,d,f in shots],'duration',D)
 # sounds: phonk hit on the hook, soft pop on match cards, soft coin on slips, sparkle on the logo end card
-ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m') or b.get('k')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s') or b.get('p')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]
+ev=[(0.0,'phonk',0.85)]+[(b['start'],'pop',0.55) for b in TL if b.get('m') or b.get('k')]+[(b['start']+(0.4 if b.get('m') else 0.05),'coin',0.6) for b in TL if b.get('s') or b.get('p')]+[(b['start'],'sparkle',0.5) for b in TL if b.get('logo')]+[(b['start'],'impact',0.55) for b in TL if b.get('big')]+[(b['start'],'pop',0.35) for b in TL if b.get('dt')]
+_cur=None
+for b in TL:   # scoreboard: pop when a new score appears
+    if 'sc' in b:
+        if b['sc'] and b['sc']!=_cur: ev.append((b['start'],'pop',0.5))
+        _cur=b['sc'] or None
+if a.calm: ev=[]
 ins=['-i',P+'seg/base.mp4','-framerate','30','-i',P+'ov/ov_%05d.png','-i',P+'vo_final.wav']; fl=['[2:a]volume=1.0,apad[vo]']; mix=['[vo]']; n=3
 if a.music:
     ins+=['-ss',str(a.mstart),'-stream_loop','-1','-i',a.music]; fl.append(f'[{n}:a]volume={a.mvol},afade=t=in:d=0.3,afade=t=out:st={D-1.2}:d=1.2[mu]'); mix.append('[mu]'); n+=1
