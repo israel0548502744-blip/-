@@ -36,6 +36,7 @@ The rest of this file is about story videos.
 | `stories/12-clubs.md` | Per club: stable facts + the ids of its stories (for matching stories to the day's fixtures) |
 | `stories/13-guess-who.md` | 20 "נחשו מי השחקן" quizzes (clues from hard to easy + answer) |
 | `stories/CALENDAR.md` | Exact date of 111 stories, for "בדיוק היום לפני X שנים" videos |
+| `scripts/` | Ready-to-record scripts, one file per planned video (`2026-11-06_09-9.json`): date, ids, why, footage needed, post text and the beats with graphics |
 | `stories/catalog.json` | Everything above as one JSON (built by `tools/build_catalog.py`); the control page is built from it |
 | `tools/` | `build_catalog.py`, `build_page.py` + `control_page.template.html` (the control page source) |
 
@@ -47,7 +48,7 @@ Each story has: **הוק** (opening line), **הסיפור** (the facts, in order
 - **TikTok-safe wording** (same as the predictions videos): never "הימור/הימורים/יחס/ווינר/טוטו/המלצה/betting". Leicester: "סיכוי אחד ל-5,000", never "יחס".
 - **Tragedies** (`05-emotional.md` and deaths anywhere): calm, respectful tone. Calm hook text ("זה הסיפור הכי עצוב בכדורגל"), **no phonk hit, no pop sounds**, no jokes, no shouting tags in ElevenLabs (use `[calm]`/`[sad]`, not `[excited] [shouting]`). Suggested song: After Dark – Mr.Kitty. Ending: "כתבו 'לזכרם' בתגובות".
 - **Visual style = the predictions videos' house style** (`tips-video.md`): same captions (Heebo ExtraBold 80px, ≤3 words per chunk), no zoom on clips, no slow motion, best quality, no logo, sharp energetic first frame, the video ends on the comments CTA. Reuse the tools from the "Tool files" section of `tips-video.md` (`align.py`, `render.js`, `overlay.html`, `build.py`, `sfx.py`) and its setup/run steps — beats are `hook` and `line`; a news/archive photo goes on a beat as `"k":"photo.jpg"`. No `m`/`p` cards (those are for predictions). Story graphics: see "Story graphics" below.
-- **Length**: aim for **40–45 s** (≈100–115 words of the user's ElevenLabs voice). Ask before going over 50 s. "הידעתם?" videos: 10–20 s (25–50 words).
+- **Length**: **25–45 s** (≈2.3 words per second of the user's ElevenLabs voice). The ready scripts are short on purpose (≈50–75 words, 22–31 s) so viewers stay to the end; write longer only when the story needs it or the user asks. Ask before going over 50 s. "הידעתם?" videos: 10–20 s (25–50 words).
 - **Footage**: Claude can't download match footage. Tell the user exactly which clips to bring (the 🎬 line). Never use footage of a different, identifiable team or match as if it were the story; use a neutral shot (crowd, ball, stadium) instead and say so once.
 
 ## Script structure (story video)
@@ -80,7 +81,7 @@ Give the user two copy blocks, as in `tips-video.md`: plain text, and an ElevenL
 Put these on beats in `script.json`; `align.py` carries them into `timeline.json`.
 - `"dt":"1966 · לונדון"` — date/place chip at the top, pops in on that beat (≥2.2 s, soft pop). Use it on the setup beat.
 - `"sc":{"a":"ליברפול","b":"מילאן","ga":0,"gb":3}` — scoreboard at the top. **It stays on screen** from its first beat until a beat sets `"sc":false` (or the video ends), and each new score pops with a sound. Make every score change its own beat ("ג'רארד!" → 1-3, "שמיצר!" → 2-3). Team `a` is on the right. Keep team names short (≤8 letters).
-- `"big":"149-0"` — huge text in the middle of the screen (punch-in + deep impact sound) for the climax number. Never on the same beat as `k` (both sit above the captions).
+- `"big":"0:149"` — huge text in the middle of the screen (punch-in + deep impact sound) for the climax number or word ("שלושער!", "רמז 1"). A score in `big` uses Hebrew order with a colon, the winner's number on the right ("0:8"). It may share a beat with `sc`, never with `k` (both sit above the captions).
 - `"calm":true` on the **hook beat** — slow fade, white glow, no punch zoom. For tragedies also run `build.py ... --calm` (no phonk hit, no pops, no effect sounds).
 Tested 5.11.2026 on a 15 s sample (Istanbul 2005): chip, scoreboard 0-0 → 0-3 → 1-3 → 2-3 → 3-3, big "6 דקות", calm hook.
 
@@ -99,6 +100,12 @@ Tested 5.11.2026 on a 15 s sample (Istanbul 2005): chip, scoreboard 0-0 → 0-3 
 - **"היום בהיסטוריה"** — from the control page's "השבוע בהיסטוריה" strip.
 - **"נחשו מי"** — `13`.
 - **Story of the day linked to the fixtures**: before a derby/big game, pick a story about those clubs from `12-clubs.md` (e.g. Liverpool–United → `08-7`; a Milan game → `08-4`; Barça–Real → `01-7` / `08-9`).
+
+## Ready scripts and the plan (`scripts/`)
+Each planned video is one JSON file: `{"date","ids","part"?,"title","kind","why","footage","post","beats":[...]}`. `beats` is exactly a `script.json` for the video tools (with `dt`/`sc`/`big`/`k` graphics). The control page shows the plan on top with "העתקת קריינות", "גרסת ElevenLabs" and "טקסט לפוסט" buttons.
+- **When the user sends a voiceover + clips for a planned video**: take that file's `beats` as `<proj>/script.json` (fix only the words the voice really says), map the 🎬 footage, build as usual, send it, then mark the story used on the control page.
+- **When the plan runs out, or the user asks "תכין תוכנית"**: plan the next two weeks, one video a day: anniversaries from `CALENDAR.md` (round ones first), stories about clubs playing big games that weekend (fixtures from ESPN's open API, see "Checking past predictions" in `tips-video.md` for the URL pattern; then `12-clubs.md`), one Israeli story a week, one "נחשו מי" and one "הידעתם ×3" a week, a two-part story, and skip anything marked used. Verify every date and number with a web search before writing. Then `python3 tools/build_catalog.py`, `python3 tools/build_page.py pages/stories-control.html` (repo root), republish to the page's URL, commit.
+- Coming up after 19.11.2026: **23.11 — 30 years since Ali Dia's Premier League game (`06-12`, a round anniversary)**; **28.11 — 10 years since the Chapecoense crash (`05-3`, calm tone, `--calm`)**.
 
 ## The control page (חדר הסיפורים) — what's used, and the numbers
 **URL: https://claude.ai/artifact/FStHaRy3KgKGVPfBfqVpnR** (private to the user). It lists every story with filters (topic, club, unused only, has a date, two parts), the "this week in history" strip, a "השתמשתי" button, view/like/comment/share fields per used story, and a "מה עובד" summary (average views per topic, top videos). Marks live in its database, collection `used`, one document per story id: `{date:"YYYY-MM-DD", by:"claude"|"page", title, cat, video?, views?, likes?, comments?, shares?, statsAt?}`.

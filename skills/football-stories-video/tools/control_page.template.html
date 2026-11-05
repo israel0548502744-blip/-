@@ -36,7 +36,7 @@ h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
 .status{font-size:13px;color:var(--muted);margin-top:8px}
 .status.err{color:var(--warn)}
 section{margin-top:26px}
-.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.sechead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-bottom:10px}
 .sechead h2{font-size:21px;font-weight:800}
 .sechead small{color:var(--muted)}
 .strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
@@ -100,6 +100,20 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
 .toplist li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
 .toplist li span:last-child{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
 .note{color:var(--muted);font-size:14px;margin:0}
+.plan{display:flex;flex-direction:column;gap:10px}
+.prow{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;align-items:start}
+.prow.past{opacity:.55}.prow.today{border:2px solid var(--accent)}
+.prow.done{border-color:var(--used)}
+.pdate{text-align:center;background:var(--surface2);border-radius:12px;padding:8px 4px;font-family:var(--font-display)}
+.pdate b{display:block;font-size:24px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums}
+.pdate span{font-size:12.5px;color:var(--muted);font-weight:700}
+.pbody{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pbody h3{font-size:17px;font-weight:800;line-height:1.3}
+.pbody .why{font-size:13.5px;color:var(--muted);margin:0}
+.lines{margin:6px 0 0;padding:0 18px 0 0;font-size:14.5px}
+.lines li{margin:2px 0}
+.gfx{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+@media (max-width:720px){.prow{grid-template-columns:minmax(0,1fr)}.pdate{display:flex;gap:8px;align-items:baseline;justify-content:flex-start;text-align:right;padding:6px 10px}.pdate b{font-size:18px}}
 @media (max-width:720px){.works{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.counts{width:100%}.count{flex:1;min-width:0}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
@@ -117,6 +131,11 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
       <div class="count"><b id="cUsed">0</b><span>כבר יצאו</span></div>
     </div>
   </header>
+
+  <section aria-labelledby="hPlan">
+    <div class="sechead"><h2 id="hPlan">התוכנית: תסריטים מוכנים</h2><small>מעתיקים, מקליטים ב-ElevenLabs ושולחים ל-Claude עם הקטעים</small></div>
+    <div class="plan" id="plan"></div>
+  </section>
 
   <section aria-labelledby="hAnn">
     <div class="sechead"><h2 id="hAnn">השבוע בהיסטוריה</h2><small>סרטון "בדיוק היום לפני X שנים" · לבדוק תאריך לפני הקלטה</small></div>
@@ -195,6 +214,7 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
     const u = USED[i.id];
     const pills = [`<span class="id">${i.id}</span>`, `<span class="pill cat">${esc(CATS[i.cat])}</span>`];
     if (i.date) pills.push(`<span class="pill date">${heDate(i.date)}</span>`);
+    if (i.plan) pills.push(`<span class="pill cat">תסריט מוכן · ${i.plan.map(d => heDate(d).replace(/\.\d{4}$/, '')).join(', ')}</span>`);
     if (i.two) pills.push('<span class="pill">2 חלקים</span>');
     if (i.calm) pills.push('<span class="pill calm">טון שקט</span>');
     if (i.warn && !i.calm) pills.push('<span class="pill warn">לבדוק פרט</span>');
@@ -275,7 +295,39 @@ button:focus-visible,.chip:focus-visible,.search:focus-visible,select:focus-visi
       <div class="panel"><h3>הסרטונים הכי נצפים</h3><ol class="toplist">${top.map(t => `<li><span>${esc(BYID[t.k].title)}</span><span>${fmt(t.v)}</span></li>`).join('')}</ol></div></div>`;
   }
 
-  function renderAll(){ renderCounts(); renderStrip(); renderGrid(); renderWorks(); }
+  // ---------- content plan (ready scripts) ----------
+  const DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  const PLAN = CAT.plan || [];
+  function renderPlan(){
+    if (!PLAN.length) { $('plan').innerHTML = '<p class="note">אין כרגע תסריטים מוכנים. בקשו מ-Claude תוכנית לשבוע.</p>'; return; }
+    $('plan').innerHTML = PLAN.map((p, n) => {
+      const d = new Date(p.date + 'T00:00:00'); const diff = Math.round((d - today) / 864e5);
+      const done = p.ids.every(id => USED[id]);
+      const cls = ['prow', diff < 0 ? 'past' : '', diff === 0 ? 'today' : '', done ? 'done' : ''].join(' ');
+      const when = diff === 0 ? 'היום' : diff === 1 ? 'מחר' : 'יום ' + DAYS[d.getDay()];
+      const lines = p.vo.split('\n').map(l => `<li>${esc(l)}</li>`).join('');
+      return `<article class="${cls}"><div class="pdate"><span>${when}</span><b>${d.getDate()}.${d.getMonth()+1}</b></div>
+        <div class="pbody"><div class="meta"><span class="pill cat">${esc(p.kind)}</span><span class="pill">~${p.secs} שניות</span>${p.ids.map(i => `<span class="id">${i}</span>`).join('')}${done ? '<span class="pill cat">✓ יצא</span>' : ''}</div>
+        <h3>${esc(p.title)}</h3><p class="why">${esc(p.why)}</p>
+        <details data-id="plan-${n}"${openD.has('plan-' + n) ? ' open' : ''}><summary>התסריט, הגרפיקה והצילומים</summary>
+          <ol class="lines">${lines}</ol>
+          <div class="gfx">${p.gfx.map(g => `<span class="pill">${esc(g)}</span>`).join('')}</div>
+          <p><span class="lab">צילומים שצריך: </span>${esc(p.footage)}</p>
+          <p><span class="lab">טקסט לפוסט: </span>${esc(p.post).replace(/\n/g, '<br>')}</p></details>
+        <div class="actions"><button class="btn primary" data-pcopy="vo" data-n="${n}">העתקת קריינות</button><button class="btn" data-pcopy="el" data-n="${n}">גרסת ElevenLabs</button><button class="btn" data-pcopy="post" data-n="${n}">טקסט לפוסט</button></div></div></article>`;
+    }).join('');
+  }
+  $('plan').addEventListener('toggle', e => { const d = e.target; if (d.tagName !== 'DETAILS') return; d.open ? openD.add(d.dataset.id) : openD.delete(d.dataset.id); }, true);
+  $('plan').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-pcopy]'); if (!b) return;
+    const p = PLAN[+b.dataset.n], txt = b.dataset.pcopy === 'vo' ? p.vo.replace(/\n/g, ' ') : b.dataset.pcopy === 'el' ? p.el.replace(/\n/g, ' ') : p.post;
+    const label = b.textContent;
+    try { await navigator.clipboard.writeText(txt); b.textContent = 'הועתק'; }
+    catch (err) { const art = b.closest('.prow'); const det = art.querySelector('details'); det.open = true; b.textContent = 'ההעתקה נחסמה, סמנו מהתסריט'; }
+    setTimeout(() => { b.textContent = label; }, 1600);
+  });
+
+  function renderAll(){ renderCounts(); renderPlan(); renderStrip(); renderGrid(); renderWorks(); }
 
   // ---------- actions ----------
   $('grid').addEventListener('click', async e => {

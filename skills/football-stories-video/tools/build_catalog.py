@@ -74,6 +74,28 @@ for name, ids in clubs.items():
         if i in byid:
             byid[i].setdefault('clubs', []).append(name)
 missing = sorted({i for ids in clubs.values() for i in ids if i not in byid})
-out = {'cats': CATS, 'items': items, 'clubs': sorted(clubs)}
+# ready scripts (scripts/*.json) -> content plan
+plan = []
+for f in sorted(glob.glob(os.path.join(D, '..', 'scripts', '*.json'))):
+    sc_ = json.load(open(f, encoding='utf-8'))
+    beats = sc_['beats']
+    calm = any(b.get('calm') for b in beats)
+    vo = '\n'.join(b['vo'] for b in beats)
+    tag0, tag = ('[calm] ', '[calm] ') if calm else ('[excited] [shouting] ', '[excited] ')
+    el = tag0 + beats[0]['vo'] + '\n' + tag + '\n'.join(b['vo'] for b in beats[1:])
+    gfx = []
+    for b in beats:
+        if b.get('dt'): gfx.append('תגית: ' + b['dt'])
+        if b.get('sc'): gfx.append(f"לוח: {b['sc']['a']} {b['sc']['ga']} - {b['sc']['gb']} {b['sc']['b']}")
+        if b.get('big'): gfx.append('מספר ענק: ' + b['big'])
+        if b.get('k'): gfx.append('תמונה: ' + b['k'])
+    words = sum(len(b['vo'].split()) for b in beats)
+    plan.append({'file': os.path.basename(f), 'date': sc_['date'], 'ids': sc_['ids'], 'part': sc_.get('part'),
+                 'title': sc_['title'], 'kind': sc_['kind'], 'why': sc_['why'], 'footage': sc_['footage'],
+                 'post': sc_['post'], 'vo': vo, 'el': el, 'gfx': gfx, 'words': words, 'secs': round(words / 2.35)})
+    for i in sc_['ids']:
+        if i in byid:
+            byid[i].setdefault('plan', []).append(sc_['date'])
+out = {'cats': CATS, 'items': items, 'clubs': sorted(clubs), 'plan': plan}
 json.dump(out, open(os.path.join(D, 'catalog.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
-print(f"items {len(items)}  dated {sum('date' in i for i in items)}  clubs {len(clubs)}  missing club ids {missing}")
+print(f"plan {len(plan)}  items {len(items)}  dated {sum('date' in i for i in items)}  clubs {len(clubs)}  missing club ids {missing}")
