@@ -46,6 +46,7 @@ The user makes these videos daily. He sends: football clips, match images (two l
 - He wants **our own match image**, not the site images: **design 5 "stadium lights"** is the fixed default (he picked it from 10 options on 8.11). Dark green gradient with a soft light from the top, faint vertical pitch stripes, a centre line and centre circle; crests big with a drop shadow (no white tile), **team names in Hebrew** under each crest (home left, away right), **kick-off time in the middle** in a dark green chip, the day + date under it in light green (e.g. "ראשון 8.11"), competition name small at the top ("ליגת העל", "לה ליגה", "ליג 1", "ליגת האלופות", "ליגה אירופית"). Soft and clean — nothing loud.
 - Tool: `tools/matchcard.py` (needs `Heebo.ttf` next to it and Playwright): `python3 tools/matchcard.py <proj>/img/m-<x>.png "<home he>" home_crest "<away he>" away_crest "20:30" "ראשון 8.11" "ליגת העל"` → 1200×675 PNG, used as `"m"` in script.json.
 - Crests: `https://crests.football-data.org/<id>.svg` (Atlético 78, Barcelona 81, Lens 546, Marseille 516, Real 86, Liverpool 64, City 65, Arsenal 57, Dortmund 4, Leipzig 721, Porto 503, PSV 674…). Israeli clubs aren't there: crop the crest from the screenshot he sends (circle crop, 400×400 PNG with transparent corners). Check the Hebrew renders right (Read the PNG).
+- **Prediction card and WhatsApp card are design 5 too** (8.11): same dark green gradient (#0a3a23→#05200f) with the soft top light and faint pitch stripes, thin white-ish border (no green neon glow), "התחזית שלי" as a dark chip with light-green text, match line light, pick in big white; WhatsApp card dark green with white title and light-green "הקישור בביו", white icon circle. Built into `tools/overlay.html` (old green version kept as `overlay_v2.html`).
 - If he only sends the site's images, still build our own card from the names/time in them.
 
 ## Special one-off projects (only when he asks; daily tips rules above stay as they are)
@@ -239,19 +240,21 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .pic{position:absolute;left:250px;right:250px;bottom:1030px;border-radius:26px;overflow:hidden;border:6px solid #38e07b;box-shadow:0 0 40px rgba(56,224,123,.55),0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
 .pic img{display:block;width:100%}
 .slipw{position:absolute;left:110px;right:110px;top:1110px;transform-origin:50% 50%}
-.slip{border-radius:14px;overflow:hidden;border:5px solid #38e07b;box-shadow:0 0 34px rgba(56,224,123,.55),0 22px 50px rgba(0,0,0,.6)}
+.slip{border-radius:28px;overflow:hidden;border:3px solid rgba(255,255,255,.22);box-shadow:0 22px 50px rgba(0,0,0,.6)}
 .slip img{display:block;width:100%}
-.pred{background:linear-gradient(180deg,rgba(14,30,20,.96),rgba(6,16,10,.96));padding:26px 34px 30px;text-align:center;color:#fff}
-.pred .tag{display:inline-block;background:#38e07b;color:#06301a;font-weight:900;font-size:36px;padding:4px 22px;border-radius:30px;margin-bottom:14px}
-.pred .mt{font-weight:700;font-size:40px;opacity:.9;margin-bottom:8px}
-.pred .pk{font-weight:900;font-size:54px;line-height:1.15;color:#38e07b}
+.pred{position:relative;background:radial-gradient(ellipse at 50% -20%,rgba(255,255,255,.26),transparent 55%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 86px,transparent 86px 172px),linear-gradient(180deg,#0a3a23,#05200f);padding:28px 34px 34px;text-align:center;color:#fff}
+.pred:before{content:'';position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;background:rgba(255,255,255,.08)}
+.pred>*{position:relative}
+.pred .tag{display:inline-block;background:#062819;color:#9fe8bd;font-weight:800;font-size:34px;padding:4px 24px;border-radius:18px;margin-bottom:14px;border:2px solid rgba(255,255,255,.12)}
+.pred .mt{font-weight:700;font-size:40px;color:#d7f7e4;margin-bottom:10px;text-shadow:0 3px 10px rgba(0,0,0,.6)}
+.pred .pk{font-weight:900;font-size:56px;line-height:1.15;color:#fff;text-shadow:0 4px 14px rgba(0,0,0,.6)}
 .wm{position:absolute;right:42px;top:78px;width:124px;height:124px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .logo{position:absolute;left:300px;width:480px;top:370px;transform-origin:50% 50%;filter:drop-shadow(0 0 40px rgba(56,224,123,.65)) drop-shadow(0 20px 40px rgba(0,0,0,.6))}
-.wa{position:absolute;left:80px;right:80px;top:560px;background:#25d366;border-radius:40px;padding:34px 40px;display:flex;align-items:center;gap:30px;
-  box-shadow:0 22px 50px rgba(0,0,0,.55);transform-origin:50% 50%;color:#06301a}
+.wa{position:absolute;left:80px;right:80px;top:560px;border-radius:32px;padding:34px 40px;display:flex;align-items:center;gap:30px;overflow:hidden;color:#fff;border:3px solid rgba(255,255,255,.22);
+background:radial-gradient(ellipse at 50% -30%,rgba(255,255,255,.26),transparent 60%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 86px,transparent 86px 172px),linear-gradient(180deg,#0a3a23,#05200f);box-shadow:0 22px 50px rgba(0,0,0,.6);transform-origin:50% 50%}
 .wa svg{flex:none;width:130px;height:130px}
-.wa b{display:block;white-space:nowrap;font-size:58px;font-weight:900;line-height:1.05}
-.wa small{display:block;font-size:44px;font-weight:700;opacity:.85;margin-top:8px}
+.wa b{display:block;white-space:nowrap;font-size:58px;font-weight:900;line-height:1.05;text-shadow:0 4px 14px rgba(0,0,0,.6)}
+.wa small{display:block;font-size:44px;font-weight:700;color:#9fe8bd;margin-top:8px}
 </style></head><body><div id="stage"></div>
 <script>
 let TL=null;
