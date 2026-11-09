@@ -41,6 +41,7 @@ The user makes these videos daily. He sends: football clips, match images (two l
 - **Checking past predictions ("כמה פגענו")** (5.11): collect every prediction card from `<proj>/script.json` (final version of each day — if he re-sent picks, the later project wins) and read real results from ESPN's open API: `https://site.api.espn.com/apis/site/v2/sports/soccer/<league>/scoreboard?dates=YYYYMMDD` (leagues: eng.1 esp.1 ger.1 ita.1 fra.1 tur.1 por.1 uefa.champions uefa.europa ger.dfb_pokal eng.league_cup ita.coppa_italia), then `.../summary?event=<id>` for half-time linescores, goal minutes and `wonCorners`. Israeli league is not on ESPN (web search only). Judge cup games by the 90-minute score. Report hits in a table with the real score; never count a pick you could not verify.
 
 ## Match images — our own design (since 8.11)
+- **NEW DEFAULT since 9.11: design 6 "pitch"** (his partner's pick; replaces design 5 for ALL tags — match image, prediction card, WhatsApp card). Look: dark outer frame (#0b1510) with thin bright-green glow on the left/right edges, a dark-green rounded box (#14402a) with soft top light, and inside it a bright mowed **football pitch** (stripes #2bbf5c/#25b052) with thick white rounded border lines, a white halfway line and centre circle. Match image: competition in a small white pill at the top, crests (no tile) + white bold Hebrew names, **kick-off time in a white rounded chip with green text (#1d8a44) in the centre circle**, day+date in white under it. Prediction card: same pitch inside the dark frame, "התחזית שלי" white pill, match line white, **pick in a white chip with green text**. WhatsApp card: same pitch, white icon circle, white title, "הקישור בביו" in a white chip with green text. `tools/matchcard.py` = design 6 (design 5 kept as `tools/matchcard_d5.py`, old overlay as `overlay_d5.html`). He may ask for more variations in this pitch style.
 - He wants **our own match image**, not the site images: **design 5 "stadium lights"** is the fixed default (he picked it from 10 options on 8.11). Dark green gradient with a soft light from the top, faint vertical pitch stripes, a centre line and centre circle; crests big with a drop shadow (no white tile), **team names in Hebrew** under each crest (home left, away right), **kick-off time in the middle** in a dark green chip, the day + date under it in light green (e.g. "ראשון 8.11"), competition name small at the top ("ליגת העל", "לה ליגה", "ליג 1", "ליגת האלופות", "ליגה אירופית"). Soft and clean — nothing loud.
 - Tool: `tools/matchcard.py` (needs `Heebo.ttf` next to it and Playwright): `python3 tools/matchcard.py <proj>/img/m-<x>.png "<home he>" home_crest "<away he>" away_crest "20:30" "ראשון 8.11" "ליגת העל"` → 1200×675 PNG, used as `"m"` in script.json.
 - Crests: `https://crests.football-data.org/<id>.svg` (Atlético 78, Barcelona 81, Lens 546, Marseille 516, Real 86, Liverpool 64, City 65, Arsenal 57, Dortmund 4, Leipzig 721, Porto 503, PSV 674…). Israeli clubs aren't there: crop the crest from the screenshot he sends (circle crop, 400×400 PNG with transparent corners). Check the Hebrew renders right (Read the PNG).
@@ -238,14 +239,14 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .pic{position:absolute;left:250px;right:250px;bottom:1030px;border-radius:26px;overflow:hidden;border:6px solid #38e07b;box-shadow:0 0 40px rgba(56,224,123,.55),0 24px 60px rgba(0,0,0,.65);transform-origin:50% 50%}
 .pic img{display:block;width:100%}
 .slipw{position:absolute;left:110px;right:110px;top:1110px;transform-origin:50% 50%}
-.slip{border-radius:28px;overflow:hidden;border:3px solid rgba(255,255,255,.22);box-shadow:0 22px 50px rgba(0,0,0,.6)}
+.slip{border-radius:32px;overflow:hidden;background:radial-gradient(ellipse at 50% -20%,rgba(255,255,255,.25),transparent 55%),#14402a;padding:14px;box-shadow:0 22px 50px rgba(0,0,0,.6),-5px 0 0 #38e07b,5px 0 0 #38e07b}
 .slip img{display:block;width:100%}
-.pred{position:relative;background:radial-gradient(ellipse at 50% -20%,rgba(255,255,255,.26),transparent 55%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 86px,transparent 86px 172px),linear-gradient(180deg,#0a3a23,#05200f);padding:28px 34px 34px;text-align:center;color:#fff}
-.pred:before{content:'';position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;background:rgba(255,255,255,.08)}
+.pred{position:relative;border:6px solid #fff;border-radius:22px;overflow:hidden;background:repeating-linear-gradient(90deg,#2bbf5c 0 72px,#25b052 72px 144px);padding:24px 30px 30px;text-align:center;color:#fff}
+.pred:before{content:'';position:absolute;left:50%;top:0;bottom:0;width:5px;margin-left:-2.5px;background:rgba(255,255,255,.9)}
 .pred>*{position:relative}
-.pred .tag{display:inline-block;background:#062819;color:#9fe8bd;font-weight:800;font-size:34px;padding:4px 24px;border-radius:18px;margin-bottom:14px;border:2px solid rgba(255,255,255,.12)}
-.pred .mt{font-weight:700;font-size:40px;color:#d7f7e4;margin-bottom:10px;text-shadow:0 3px 10px rgba(0,0,0,.6)}
-.pred .pk{font-weight:900;font-size:56px;line-height:1.15;color:#fff;text-shadow:0 4px 14px rgba(0,0,0,.6)}
+.pred .tag{display:inline-block;background:#fff;color:#1d8a44;font-weight:900;font-size:34px;padding:2px 26px;border-radius:30px;margin-bottom:12px}
+.pred .mt{font-weight:800;font-size:40px;color:#fff;margin-bottom:12px;text-shadow:0 3px 10px rgba(0,0,0,.35)}
+.pred .pk{display:inline-block;font-weight:900;font-size:54px;line-height:1.15;color:#1d8a44;background:#fff;border-radius:20px;padding:6px 26px;box-shadow:0 8px 20px rgba(0,0,0,.25)}
 .hook.calm{-webkit-text-stroke:10px #000;text-shadow:0 0 30px rgba(255,255,255,.35),0 10px 30px rgba(0,0,0,.6)}
 /* story graphics: dt = date/place chip, sc = scoreboard, big = huge number/word (story videos only) */
 .chip{position:absolute;left:0;right:0;top:300px;display:flex;justify-content:center;transform-origin:50% 50%}
@@ -262,11 +263,11 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .big .bi{display:inline-block;unicode-bidi:plaintext}
 .wm{position:absolute;right:42px;top:78px;width:124px;height:124px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .logo{position:absolute;left:300px;width:480px;top:370px;transform-origin:50% 50%;filter:drop-shadow(0 0 40px rgba(56,224,123,.65)) drop-shadow(0 20px 40px rgba(0,0,0,.6))}
-.wa{position:absolute;left:80px;right:80px;top:560px;border-radius:32px;padding:34px 40px;display:flex;align-items:center;gap:30px;overflow:hidden;color:#fff;border:3px solid rgba(255,255,255,.22);
-background:radial-gradient(ellipse at 50% -30%,rgba(255,255,255,.26),transparent 60%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 86px,transparent 86px 172px),linear-gradient(180deg,#0a3a23,#05200f);box-shadow:0 22px 50px rgba(0,0,0,.6);transform-origin:50% 50%}
+.wa{position:absolute;left:70px;right:70px;top:560px;border-radius:34px;padding:14px;background:radial-gradient(ellipse at 50% -30%,rgba(255,255,255,.25),transparent 60%),#14402a;box-shadow:0 22px 50px rgba(0,0,0,.6),-5px 0 0 #38e07b,5px 0 0 #38e07b;transform-origin:50% 50%;color:#fff}
+.wa .wi{display:flex;align-items:center;gap:30px;border:6px solid #fff;border-radius:22px;padding:24px 34px;background:repeating-linear-gradient(90deg,#2bbf5c 0 72px,#25b052 72px 144px)}
 .wa svg{flex:none;width:130px;height:130px}
-.wa b{display:block;white-space:nowrap;font-size:58px;font-weight:900;line-height:1.05;text-shadow:0 4px 14px rgba(0,0,0,.6)}
-.wa small{display:block;font-size:44px;font-weight:700;color:#9fe8bd;margin-top:8px}
+.wa b{display:block;white-space:nowrap;font-size:58px;font-weight:900;line-height:1.05;text-shadow:0 3px 10px rgba(0,0,0,.35)}
+.wa small{display:inline-block;font-size:40px;font-weight:900;color:#1d8a44;background:#fff;border-radius:16px;padding:0 18px;margin-top:10px}
 </style></head><body><div id="stage"></div>
 <script>
 let TL=null;
@@ -312,9 +313,9 @@ function render(t){
     if(b.logo){const s=b.start;if(t>=s){const sc=pop((t-s)/0.4);const br=1+0.025*Math.sin((t-s)*5);
       html+=`<img class="logo" src="img/logo.png" style="transform:scale(${(sc*br).toFixed(3)})">`;key+='L'+(sc*br).toFixed(3)}}
     if(b.wa){const s=b.start+0.15,e=b.end;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
-      html+=`<div class="wa" style="transform:scale(${sc.toFixed(3)})"><svg viewBox="0 0 100 100"><circle cx="50" cy="48" r="40" fill="#fff"/><path d="M22 86 L30 64 L44 78 Z" fill="#fff"/>
+      html+=`<div class="wa" style="transform:scale(${sc.toFixed(3)})"><div class="wi"><svg viewBox="0 0 100 100"><circle cx="50" cy="48" r="40" fill="#fff"/><path d="M22 86 L30 64 L44 78 Z" fill="#fff"/>
       <path d="M38 30c2-2 5-2 6 1l3 7c1 2 0 4-2 5l-2 2c2 5 6 9 11 11l2-2c1-2 3-3 5-2l7 3c3 1 3 4 1 6l-3 3c-4 4-14 1-23-8s-12-19-8-23z" fill="#25d366"/></svg>
-      <div><b>קבוצת הוואטסאפ שלנו</b><small>${WA_SUB}</small></div></div>`;key+='w'+sc.toFixed(3)}}
+      <div><b>קבוצת הוואטסאפ שלנו</b><small>${WA_SUB}</small></div></div></div>`;key+='w'+sc.toFixed(3)}}
   }
   // captions: whole line is laid out up front, words are only revealed -> nothing ever moves
   let ci=-1;for(let k=0;k<CH.length;k++)if(t>=CH[k].t0)ci=k;
