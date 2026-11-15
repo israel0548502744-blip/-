@@ -44,6 +44,7 @@ html,body{margin:0;width:1080px;height:1920px;background:transparent;overflow:hi
 .wa svg{flex:none;width:130px;height:130px}
 .wa b{display:block;white-space:nowrap;font-size:58px;font-weight:900;line-height:1.05;text-shadow:0 6px 16px rgba(0,50,20,.65)}
 .wa small{display:block;font-size:44px;font-weight:700;color:#fff;margin-top:8px;text-shadow:0 4px 12px rgba(0,0,0,.45)}
+.pred .od{display:inline-block;margin-top:14px;font-weight:800;font-size:34px;color:#128a3a;background:#fff;border-radius:999px;padding:2px 24px}
 </style></head><body><div id="stage"></div>
 <script>
 let TL=null;
@@ -72,7 +73,7 @@ function render(t){
       html+=`<div class="pic" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.k}"></div>`;key+='k'+b.k+sc.toFixed(3)}}
     if(b.s||b.p){const s=b.start+(b.m?0.35:0),nx=TL.find(x=>x.start>b.start&&x.m),e=Math.min(b.end+0.25,nx?nx.start-0.02:1e9);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       // b.p = prediction card {match, pick} (no odds/stake); b.s = slip screenshot (legacy)
-      const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div></div>`:`<img src="img/${b.s}">`;
+      const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div>${b.p.od?`<div class="od">יחס ${b.p.od}</div>`:""}</div>`:`<img src="img/${b.s}">`;
       html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip">${inner}</div></div>`;key+='s'+(b.s||b.p.pick)+sc.toFixed(3)}}
     // story graphics. dt: "1966 · לונדון" chip; big: "149-0" huge text; sc: {"a":"ליברפול","b":"מילאן","ga":0,"gb":3}
     if(b.dt){const s=b.start,e=Math.max(b.end,s+2.2);if(t>=s&&t<e){const sc=pop((t-s)/0.35);

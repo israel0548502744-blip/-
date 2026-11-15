@@ -17,7 +17,7 @@ He makes vertical 9:16 TikTok football videos for his page **יום המזל** i
 Never build from memory of an older conversation: the rules change often and these files hold the latest version.
 
 ## Rules that hold in every video
-1. **TikTok-safe wording.** "תחזית/תחזיות" only. Never "המלצה", "הימור/הימורים", "יחס", "ווינר", "טוטו", "betting" — in the voiceover, captions, cards, post text, on every platform. No betting brands on screen, no slip screenshots, no odds.
+1. **TikTok-safe wording.** "תחזית/תחזיות" only. Never "המלצה", "הימור/הימורים", "יחס", "ווינר", "טוטו", "betting" — in the voiceover, captions, cards, post text, on every platform. No betting brands on screen, no slip screenshots. Odds: only the small "יחס X" pill on the prediction card, which he asked for on 15.11 (`predictions.md`).
 2. **Facts.** Predictions videos: opinion and atmosphere only, no invented stats. Story videos: facts only from `stories/` or checked with a web search that day; a legend stays "לפי הסיפור".
 3. **House style.** Captions Heebo ExtraBold 80px, max 3 words per chunk, middle of the screen. No zoom on clips, no slow motion, no repeated frames, no blurry close-ups, best quality. No logo in the video. The video ends on the comments CTA + 0.7 s, nothing after it.
 4. **First 2 seconds.** Sharp, energetic, colourful first frame with the hook text on it. Offer 4–5 hook options when writing a script.
