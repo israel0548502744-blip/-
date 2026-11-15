@@ -70,7 +70,7 @@ function render(t){
     // b.k = a story photo (e.g. a player with a trophy) that pops in when the voice starts this beat
     if(b.k){const s=b.start,e=Math.max(b.end,s+1.8);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       html+=`<div class="pic" style="transform:scale(${sc.toFixed(3)})"><img src="img/${b.k}"></div>`;key+='k'+b.k+sc.toFixed(3)}}
-    if(b.s||b.p){const s=b.start+(b.m?0.35:0),e=b.end+0.25;if(t>=s&&t<e){const sc=pop((t-s)/0.35);
+    if(b.s||b.p){const s=b.start+(b.m?0.35:0),nx=TL.find(x=>x.start>b.start&&x.m),e=Math.min(b.end+0.25,nx?nx.start-0.02:1e9);if(t>=s&&t<e){const sc=pop((t-s)/0.35);
       // b.p = prediction card {match, pick} (no odds/stake); b.s = slip screenshot (legacy)
       const inner=b.p?`<div class="pred"><div class="tag">התחזית שלי</div><div class="mt">${b.p.match}</div><div class="pk">${b.p.pick}</div></div>`:`<img src="img/${b.s}">`;
       html+=`<div class="slipw" style="transform:scale(${sc.toFixed(3)})"><div class="slip">${inner}</div></div>`;key+='s'+(b.s||b.p.pick)+sc.toFixed(3)}}
